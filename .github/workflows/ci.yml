@@ -1,0 +1,29 @@
+name: CI
+
+# 每次 push 与每个 PR 都触发
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # 1) 把仓库代码拉到 CI 机器上
+      - uses: actions/checkout@v4
+      # 2) 装好 Rust 工具链（带 clippy 与 rustfmt 组件）
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      # 3) 格式检查：代码不符合 rustfmt 风格就失败
+      - name: Format check (cargo fmt)
+        run: cargo fmt --all -- --check
+      # 4) 静态检查：把所有 clippy 警告当作错误
+      - name: Lint (cargo clippy)
+        run: cargo clippy --all-targets -- -D warnings
+      # 5) 构建
+      - name: Build
+        run: cargo build --verbose
+      # 6) 跑测试
+      - name: Test
+        run: cargo test --verbose
