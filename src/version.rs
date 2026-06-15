@@ -54,6 +54,19 @@ impl PartialEq for Version {
 
 impl Eq for Version {}
 
+// Hash 必须与 Eq 一致：相等的值哈希也必须相等（否则放进 HashMap 会出错）。
+// 我们的 Eq 视 1.0 == 1.0.0，故哈希前先去掉尾部的 0，让它们哈希到同一个值。
+// 这与 Step 05 "Eq/Ord 必须一致"是同一类契约。
+impl std::hash::Hash for Version {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        let mut end = self.parts.len();
+        while end > 0 && self.parts[end - 1] == 0 {
+            end -= 1;
+        }
+        std::hash::Hash::hash(&self.parts[..end], state);
+    }
+}
+
 /// 用 `.` 连接各段渲染版本号（如 [1,2,0] → "1.2.0"）。`Display` 必须手写
 /// （编译器不会替你猜"对用户友好的样子"），有了它 `{}` 与 `.to_string()` 才能用。
 impl std::fmt::Display for Version {
@@ -70,7 +83,7 @@ impl std::fmt::Display for Version {
 
 /// 比较运算符。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Op {
+pub enum Op {
     Lt,
     Le,
     Eq,
@@ -108,6 +121,16 @@ impl Constraint {
             op,
             version: Version::parse(rest.trim())?,
         })
+    }
+
+    /// 本约束的比较运算符。
+    pub fn op(&self) -> Op {
+        self.op
+    }
+
+    /// 本约束里的版本。
+    pub fn version(&self) -> &Version {
+        &self.version
     }
 
     /// 给定版本是否满足本约束。
