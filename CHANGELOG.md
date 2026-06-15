@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.5.0 — 暖缓存 / Warm cache
+
+**中文**
+- **缓存（模块 I）**：抓到的 `PACKAGES` 与下载的 tarball 缓存到 `.uvr-cache/`；重复 `lock`/`install` 走暖缓存、免联网。实测 `lock --repo` 冷 640ms → 暖 6.8ms（~94×）。
+- 新增教学课 26–27；`scripts/bench.sh` 加 cold/warm 对照。
+
+**English**
+- **Caching (Module I)**: cache `PACKAGES` and tarballs under `.uvr-cache/`; repeated `lock`/`install` hit the warm cache (no network). Measured `lock --repo` cold 640ms → warm 6.8ms (~94×).
+- New lessons 26–27; `scripts/bench.sh` gains a cold/warm comparison.
+
 ## v0.4.0 — 多仓库 / Multi-repo
 
 **中文**
