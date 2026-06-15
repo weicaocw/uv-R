@@ -18,6 +18,48 @@ pub enum ResolveError {
     Conflict(String),
 }
 
+/// 随 R 一起发行的 base / recommended 包：它们不在 `PACKAGES` 里、也无需单独安装，求解时跳过。
+const BUILTIN: &[&str] = &[
+    // base
+    "R",
+    "base",
+    "compiler",
+    "datasets",
+    "graphics",
+    "grDevices",
+    "grid",
+    "methods",
+    "parallel",
+    "splines",
+    "stats",
+    "stats4",
+    "tcltk",
+    "tools",
+    "utils",
+    "translations",
+    // recommended（随 R 发行）
+    "boot",
+    "class",
+    "cluster",
+    "codetools",
+    "foreign",
+    "KernSmooth",
+    "lattice",
+    "MASS",
+    "Matrix",
+    "mgcv",
+    "nlme",
+    "nnet",
+    "rpart",
+    "spatial",
+    "survival",
+];
+
+/// 是否是随 R 自带、无需安装的包。
+pub fn is_builtin(name: &str) -> bool {
+    BUILTIN.contains(&name)
+}
+
 /// 从索引中选出满足约束的"最高版本"包；约束为 `None` 表示不限版本。
 ///
 /// 返回的引用借用自 `index`——注意签名里的生命周期 `'a`：它告诉编译器
@@ -36,7 +78,7 @@ pub fn best_match<'a>(
 
 /// 从根包出发，递归解析所有传递依赖，得到"包名 → 选定版本"。
 ///
-/// - 跳过对 R 本身的伪依赖（`R (>= x)`）；
+/// - 跳过随 R 自带的 base / recommended 包（含对 `R` 本身的伪依赖）；
 /// - 找不到包 / 无满足版本 / 版本冲突 → 返回对应的 [`ResolveError`]；
 /// - 简化：贪心选"最高满足版本"且**不回溯**。真实求解器（pubgrub）会回溯，
 ///   以避开那些"换个版本本可满足"的可避免冲突。
@@ -48,8 +90,8 @@ pub fn resolve(
     let mut queue: Vec<(String, Option<Constraint>)> = vec![(root.to_string(), None)];
 
     while let Some((name, constraint)) = queue.pop() {
-        if name == "R" {
-            continue; // R 解释器伪依赖，跳过
+        if is_builtin(&name) {
+            continue; // 随 R 自带的包，无需求解 / 安装
         }
 
         // 已解析过：检查新约束是否与已选版本兼容，不兼容即冲突
@@ -126,6 +168,18 @@ Depends: R (>= 3.0.0), pkgA (>= 1.1.0)
         assert_eq!(res["pkgB"], Version::parse("2.0.0").unwrap());
         assert_eq!(res["pkgA"], Version::parse("1.2.0").unwrap());
         assert!(!res.contains_key("R"));
+    }
+
+    #[test]
+    fn skips_builtin_packages() {
+        // 依赖 R / utils / methods（都随 R 自带），求解应成功且结果不含它们
+        let idx = PackageIndex::from_packages_file(
+            "Package: pkgB\nVersion: 2.0.0\nDepends: R (>= 3.0.0), utils, methods\n",
+        );
+        let res = resolve(&idx, "pkgB").unwrap();
+        assert!(!res.contains_key("utils"));
+        assert!(!res.contains_key("methods"));
+        assert_eq!(res["pkgB"], Version::parse("2.0.0").unwrap());
     }
 
     #[test]
