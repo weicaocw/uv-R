@@ -1,5 +1,5 @@
-// Step 05：修正版本比较——按 R 语义"零填充逐段比较"，
-// 并让 ==（PartialEq）与 cmp（Ord）保持一致（Eq/Ord 契约）。
+// Step 06：版本约束，如 ">= 1.2.0"。
+// 用 enum 表示比较运算符，用 match 判断某版本是否满足约束。
 
 use std::cmp::Ordering;
 
@@ -43,8 +43,6 @@ impl PartialOrd for Version {
     }
 }
 
-// 相等性必须与 cmp 一致：a == b 当且仅当 cmp 为 Equal。
-// 否则把 Version 放进有序集合或排序时会行为错乱。
 impl PartialEq for Version {
     fn eq(&self, other: &Self) -> bool {
         self.cmp(other) == Ordering::Equal
@@ -53,9 +51,65 @@ impl PartialEq for Version {
 
 impl Eq for Version {}
 
+// 比较运算符。enum = "只能是这几种取值之一"。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Op {
+    Lt, // <
+    Le, // <=
+    Eq, // == 或 =
+    Ge, // >=
+    Gt, // >
+}
+
+// 版本约束，如 ">= 1.2.0"：一个运算符 + 一个版本。
+#[derive(Debug)]
+struct Constraint {
+    op: Op,
+    version: Version,
+}
+
+impl Constraint {
+    // 解析 ">= 1.2.0" 这类约束。先认两字符运算符，避免把 ">=" 误当成 ">"。
+    fn parse(s: &str) -> Option<Constraint> {
+        let s = s.trim();
+        let (op, rest) = if let Some(r) = s.strip_prefix(">=") {
+            (Op::Ge, r)
+        } else if let Some(r) = s.strip_prefix("<=") {
+            (Op::Le, r)
+        } else if let Some(r) = s.strip_prefix("==") {
+            (Op::Eq, r)
+        } else if let Some(r) = s.strip_prefix('>') {
+            (Op::Gt, r)
+        } else if let Some(r) = s.strip_prefix('<') {
+            (Op::Lt, r)
+        } else if let Some(r) = s.strip_prefix('=') {
+            (Op::Eq, r)
+        } else {
+            return None;
+        };
+        Some(Constraint {
+            op,
+            version: Version::parse(rest.trim())?,
+        })
+    }
+
+    // 给定版本是否满足本约束。
+    fn matches(&self, v: &Version) -> bool {
+        let ord = v.cmp(&self.version);
+        match self.op {
+            Op::Lt => ord == Ordering::Less,
+            Op::Le => ord != Ordering::Greater,
+            Op::Eq => ord == Ordering::Equal,
+            Op::Ge => ord != Ordering::Less,
+            Op::Gt => ord == Ordering::Greater,
+        }
+    }
+}
+
 fn main() {
-    println!("{:?}", Version::parse("1.2.3"));
-    println!("{:?}", Version::parse("1.2.x"));
+    let c = Constraint::parse(">= 1.2.0").unwrap();
+    let v = Version::parse("1.10.0").unwrap();
+    println!("{:?} 满足 >= 1.2.0 ? {}", v, c.matches(&v));
 }
 
 #[cfg(test)]
@@ -87,5 +141,19 @@ mod tests {
             Version::parse("1.0").unwrap(),
             Version::parse("1.0.0").unwrap()
         );
+    }
+
+    #[test]
+    fn constraint_ge_matches() {
+        let c = Constraint::parse(">= 1.2.0").unwrap();
+        assert!(c.matches(&Version::parse("1.10.0").unwrap())); // 1.10.0 >= 1.2.0
+        assert!(!c.matches(&Version::parse("1.1.9").unwrap())); // 1.1.9 不满足
+    }
+
+    #[test]
+    fn constraint_lt_uses_zero_padding() {
+        let c = Constraint::parse("< 2.0").unwrap();
+        assert!(c.matches(&Version::parse("1.9.9").unwrap()));
+        assert!(!c.matches(&Version::parse("2.0.0").unwrap())); // 2.0.0 == 2.0，不 < 2.0
     }
 }
