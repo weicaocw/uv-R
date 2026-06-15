@@ -7,7 +7,7 @@
 **Rust 语言、R 包管理、软件设计**。
 
 - 每一小步都遵循 TDD：失败的测试 → 最小实现 → 通过。
-- 每一小步都有一篇**自包含的简体中文教学课**：`docs/lessons/step-NN-*.md`（共 42 课）。
+- 每一小步都有一篇**自包含的简体中文教学课**：`docs/lessons/step-NN-*.md`（共 44 课）。
 - 课程地图与进度见 `docs/CURRICULUM.md`。
 - 提交与 PR 信息**中英双语**，便于事后翻历史复习。
 
@@ -18,7 +18,7 @@ documented as a self-contained Chinese lesson under `docs/lessons/`.
 > 📖 **用户手册（中英对照）/ User manual (bilingual)**：[`docs/MANUAL.md`](docs/MANUAL.md)
 > —— 面向使用的完整参考：命令、R 版本管理、缓存、项目布局、排错。
 
-## 现在能做什么（v0.11）/ What works now (v0.11)
+## 现在能做什么（v0.12）/ What works now (v0.12)
 
 **离线求解 + 锁定 / offline resolve & lock**
 ```sh
@@ -48,10 +48,10 @@ installed dotenv 1.0.3.9000
 ```sh
 $ cargo run -- lock --repo https://gaborcsardi.r-universe.dev dotenv > uvr.lock
 $ cat uvr.lock
-# uvr lockfile v2
-dotenv 1.0.3.9000 https://gaborcsardi.r-universe.dev   # v2 自带来源仓库 / records the source repo
+# uvr lockfile v3
+dotenv 1.0.3.9000 https://gaborcsardi.r-universe.dev sha256:941d…   # v3 记来源 + 校验和 / repo + checksum
 $ cargo run -- sync --lib ./r-lib          # ← 无需 --repo！/ no --repo needed!
-synced dotenv 1.0.3.9000   # 严格按锁定版本，不求解、不漂移 / exact locked version, no drift
+synced dotenv 1.0.3.9000   # 按锁定版本装，并校验 SHA256 / install locked version, verify SHA256
 ```
 
 **管理 R 版本（对标 `uv python`）/ manage R versions (like `uv python`)**
@@ -66,8 +66,8 @@ $ cargo run -- r which          # 看当前项目会用哪个 R / which R this p
 **对 pak 的诚实 benchmark / honest benchmark vs pak**：见 [`BENCHMARK.md`](BENCHMARK.md)
 （一次性解析：uvr ~5 ms vs pak ~5.2 s；安装这类重活诚实报"打平"）。
 
-全部完成：版本模型 · 元数据(DCF/依赖图) · 联网 · 依赖求解（**pubgrub 回溯**，手写贪心版作对照） · 下载安装 · CLI · benchmark · 多仓库 · 暖缓存 · **R 版本管理** · **lockfile sync（v2 自包含）** · **并行下载** · **拓扑序安装**。
-66 个单元测试 + CI（fmt / clippy / build / test）。
+全部完成：版本模型 · 元数据(DCF/依赖图) · 联网 · 依赖求解（**pubgrub 回溯**，手写贪心版作对照） · 下载安装 · CLI · benchmark · 多仓库 · 暖缓存 · **R 版本管理** · **lockfile sync（v3 自包含 + 校验和）** · **并行下载** · **拓扑序安装** · **完整性校验**。
+69 个单元测试 + CI（fmt / clippy / build / test）。
 
 ## 路线图 / Roadmap
 
@@ -79,7 +79,8 @@ $ cargo run -- r which          # 看当前项目会用哪个 R / which R this p
 - ✅ **并行下载**：`install` / `sync` 并行预取 tarball，`--jobs <N>` 控制并发（v0.9，作用域线程 + 工作窃取）。
 - ✅ **lockfile v2 自包含**：锁文件记来源仓库，`uvr sync` 无需 `--repo`（v0.10，对标 `cargo build` / `npm ci`）。
 - ✅ **拓扑序安装**：依赖先于依赖者（v0.11，Kahn 算法、确定性）。
-- ⏭ binary 包优先（免编译，本环境受限）· 并行安装（按拓扑层）· 锁文件校验和（sha256）。
+- ✅ **完整性校验**：lockfile v3 记 sha256，下载后校验、防篡改（v0.12，对标 `cargo`/`pip --require-hashes`）。
+- ⏭ binary 包优先（免编译，本环境受限）· 并行安装（按拓扑层）· MD5 校验/签名验证。
 
 ## 怎么学 / How it's taught
 

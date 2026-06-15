@@ -77,11 +77,13 @@ fn run_plan(
     parallel_for_each(plan, jobs, |item| {
         install::download(&item.url, &tarball_path(download_dir, item))
     })?;
-    // 阶段二：串行安装（download 此时多为缓存命中）。
+    // 阶段二：校验完整性后串行安装（download 此时多为缓存命中）。
     let mut installed = Vec::new();
     for item in plan {
         let tarball = tarball_path(download_dir, item);
         install::download(&item.url, &tarball)?;
+        install::verify_hash(&tarball, &item.hash)
+            .map_err(|e| format!("{} {}: {e}", item.name, item.version))?;
         install::install_tarball(&tarball, lib_dir, r_bin)?;
         installed.push(format!("{} {}", item.name, item.version));
     }
@@ -120,18 +122,25 @@ fn with_repos(
     resolved
         .into_iter()
         .map(|(name, version)| {
-            let repo = index
+            let found = index
                 .versions_of(&name)
                 .iter()
-                .find(|p| p.version == version)
-                .map(|p| p.repo.clone())
-                .unwrap_or_default();
-            (name, Locked { version, repo })
+                .find(|p| p.version == version);
+            let repo = found.map(|p| p.repo.clone()).unwrap_or_default();
+            let hash = found.map(|p| p.hash.clone()).unwrap_or_default();
+            (
+                name,
+                Locked {
+                    version,
+                    repo,
+                    hash,
+                },
+            )
         })
         .collect()
 }
 
-/// 多源求解并渲染 lockfile 文本（v2：含来源仓库）。
+/// 多源求解并渲染 lockfile 文本（v3：含来源仓库与校验和）。
 pub fn lock_from_sources(sources: &[Source], roots: &[String]) -> Result<String, ResolveError> {
     let index = build_index(sources);
     let resolved = resolve_all(&index, roots)?;
@@ -143,12 +152,14 @@ pub fn lock_from_packages(packages_text: &str, roots: &[String]) -> Result<Strin
     lock_from_sources(&[(packages_text.to_string(), String::new())], roots)
 }
 
-/// 一项待安装：包名、版本、源码 tarball 的 URL（指向该包自己的仓库）。
+/// 一项待安装：包名、版本、源码 tarball 的 URL（指向该包自己的仓库）+ 校验和（可空）。
 #[derive(Debug, PartialEq, Eq)]
 pub struct InstallItem {
     pub name: String,
     pub version: String,
     pub url: String,
+    /// 期望校验和（带算法前缀，如 `sha256:…`）；空则不校验。
+    pub hash: String,
 }
 
 /// 纯函数：把待装项按**依赖顺序**重排（依赖在前、依赖者在后）——拓扑排序。
@@ -243,16 +254,21 @@ pub fn install_plan(
     let items: Vec<InstallItem> = resolved
         .into_iter()
         .map(|(name, version)| {
-            // 找到该 name+version 的包，用它自己的仓库拼下载地址
-            let repo = index
+            // 找到该 name+version 的包，用它自己的仓库拼下载地址、取它的校验和
+            let found = index
                 .versions_of(&name)
                 .iter()
-                .find(|p| p.version == version)
-                .map(|p| p.repo.as_str())
-                .unwrap_or("");
+                .find(|p| p.version == version);
+            let repo = found.map(|p| p.repo.as_str()).unwrap_or("");
+            let hash = found.map(|p| p.hash.clone()).unwrap_or_default();
             let version = version.to_string();
             let url = install::tarball_url(repo, &name, &version);
-            InstallItem { name, version, url }
+            InstallItem {
+                name,
+                version,
+                url,
+                hash,
+            }
         })
         .collect();
     Ok(topo_order(items, &index)) // 依赖先于依赖者
@@ -309,6 +325,7 @@ pub fn sync_plan(
                 name: name.clone(),
                 version: lk.version.to_string(),
                 url,
+                hash: lk.hash.clone(),
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
@@ -380,6 +397,7 @@ Depends: R (>= 3.0.0), pkgA (>= 1.1.0)
             name: name.to_string(),
             version: "1.0".to_string(),
             url: "u".to_string(),
+            hash: String::new(),
         }
     }
 
@@ -477,6 +495,7 @@ Depends: R (>= 3.0.0), pkgA (>= 1.1.0)
         Locked {
             version: Version::parse(ver).unwrap(),
             repo: repo.to_string(),
+            hash: String::new(),
         }
     }
 

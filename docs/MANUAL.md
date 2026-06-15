@@ -1,6 +1,6 @@
 # uvr 用户手册 / User Manual
 
-> 适用版本 / Applies to: **v0.11**　·　中英文对照 / Bilingual (中文 → English)
+> 适用版本 / Applies to: **v0.12**　·　中英文对照 / Bilingual (中文 → English)
 > 教程式逐步讲解见 `docs/lessons/`；本手册是**面向使用**的参考。
 > For a step-by-step tutorial see `docs/lessons/`; this manual is a **usage-oriented** reference.
 
@@ -126,13 +126,15 @@ uvr sync [--repo <url> ...] [--lib <dir>] [--jobs <N>] [<lockfile>]
 
 **中文**
 - 读 lockfile（省略则默认 `uvr.lock`），**不求解**，严格安装其中锁定的版本——可复现、防漂移。
-- `--repo` **可选**：v2 锁文件自带来源仓库，直接 `uvr sync` 即可；仅旧的 v1 锁文件（无来源）才需要 `--repo` 兜底。`--lib`：目标库，默认 `./r-lib`。
+- **完整性校验**：v3 锁文件记了 SHA256；下载后、安装前校验，**不符即报错拒装**（防损坏 / 篡改）。仓库只给 md5 或没给校验和时跳过（记录但不阻断）。
+- `--repo` **可选**：v2/v3 锁文件自带来源仓库，直接 `uvr sync` 即可；仅旧的 v1 锁文件（无来源）才需要 `--repo` 兜底。`--lib`：目标库，默认 `./r-lib`。
 - 锁定的版本在来源里找不到（被下架 / 换了仓库），或 v1 锁文件没给 `--repo`，会报错并指名是哪个包。
 - 典型工作流：`uvr lock --repo ... pkg > uvr.lock`（提交进库）→ 队友 / CI / 新机器 **`uvr sync`**（无需 `--repo`）还原一模一样的依赖。
 
 **English**
 - Read a lockfile (default `uvr.lock` if omitted), **without resolving**, and install exactly the locked versions — reproducible, no drift.
-- `--repo` is **optional**: a v2 lockfile carries its source repos, so a bare `uvr sync` works; only old v1 lockfiles (no sources) need `--repo`. `--lib`: target lib, default `./r-lib`.
+- **Integrity check**: a v3 lockfile records SHA256; it is verified after download and before install, **erroring out on a mismatch** (guards corruption/tampering). Skipped when the repo gives only md5 or no checksum (recorded, not enforced).
+- `--repo` is **optional**: a v2/v3 lockfile carries its source repos, so a bare `uvr sync` works; only old v1 lockfiles (no sources) need `--repo`. `--lib`: target lib, default `./r-lib`.
 - If a locked version isn't found in the sources (yanked / repo changed), or a v1 lockfile lacks `--repo`, it errors and names the package.
 - Workflow: `uvr lock --repo ... pkg > uvr.lock` (commit it) → teammates / CI / a fresh machine run **`uvr sync`** (no `--repo`) to restore identical deps.
 
