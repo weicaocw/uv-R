@@ -54,6 +54,20 @@ impl PartialEq for Version {
 
 impl Eq for Version {}
 
+/// 用 `.` 连接各段渲染版本号（如 [1,2,0] → "1.2.0"）。`Display` 必须手写
+/// （编译器不会替你猜"对用户友好的样子"），有了它 `{}` 与 `.to_string()` 才能用。
+impl std::fmt::Display for Version {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let dotted = self
+            .parts
+            .iter()
+            .map(u64::to_string)
+            .collect::<Vec<_>>()
+            .join(".");
+        write!(f, "{dotted}")
+    }
+}
+
 /// 比较运算符。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Op {

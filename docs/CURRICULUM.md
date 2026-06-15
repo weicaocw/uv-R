@@ -35,6 +35,10 @@
 | 12 | `best_match`：选满足约束的最高版本（首遇生命周期） | TDD | ✅ 完成 |
 | 13 | 传递依赖：递归解析整棵依赖树 | TDD | ✅ 完成 |
 | 14 | 冲突检测：`Result` + 错误枚举 | TDD | ✅ 完成 |
-| 15 | lockfile：纯 std 序列化 + 往返解析 | TDD | ⬜ 待做 |
+| 15 | lockfile：纯 std 序列化 + 往返解析 | TDD | ✅ 完成 |
 
-完成后开 PR 合入 `main`。
+已完成，开 PR 合入 `main`。
+
+## 模块 F：最小命令行（计划）
+纯 std `std::env::args` 把"读 PACKAGES → 求解 → 写 lockfile"串成可用命令；完成即标记**可发布 v0.1**（离线依赖求解器）。
+后续模块 C/E/G（联网抓取、安装、对 pak 的 benchmark）需实时网络 / R / 系统安装，属资源墙。
