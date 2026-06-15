@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.9.0 — 并行下载 / Parallel downloads
+
+**中文**
+- **并行下载（模块 K）**：`install` / `sync` 现在**并行预取**所有 tarball，再串行 `R CMD INSTALL`。用作用域线程（`thread::scope`）+ 共享游标做工作窃取，自动负载均衡。`--jobs <N>` 控制并发度，默认 = CPU 核数。
+- **可测的并行**：把"对每个包做什么"作为闭包注入 `parallel_for_each`，于是并行编排**无需网络**即可单测（全做 / 并发度 / 报错传播 / 空集）。
+- **质量**：59 个单元测试（+3 `#[ignore]`），fmt + clippy 全绿。新增教学课 38–39。
+
+**English**
+- **Parallel downloads (Module K)**: `install` / `sync` now **prefetch** all tarballs in parallel, then `R CMD INSTALL` serially. Scoped threads (`thread::scope`) + a shared cursor for work-stealing (auto load-balancing). `--jobs <N>` sets the concurrency, default = CPU count.
+- **Testable parallelism**: the per-package work is an injected closure in `parallel_for_each`, so the orchestration is unit-tested **without network** (all-run / concurrency / error propagation / empty).
+- **Quality**: 59 unit tests (+3 `#[ignore]`), fmt + clippy clean. New lessons 38–39.
+
 ## v0.8.0 — lockfile 驱动的 sync / Lockfile-driven sync
 
 **中文**

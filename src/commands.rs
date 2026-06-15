@@ -63,17 +63,15 @@ where
 /// 按计划安装到 `lib_dir`：**先并行预取所有 tarball**，再按顺序 `R CMD INSTALL`。
 ///
 /// `install`（求解后）与 `sync`（按 lockfile）共用。下载彼此独立、可并行（uv 的招牌吞吐优化）；
-/// 安装仍串行（`download` 命中已下好的缓存即刻返回）。
+/// 安装仍串行（`download` 命中已下好的缓存即刻返回）。`jobs` 控制并行下载的并发度。
 fn run_plan(
     plan: &[InstallItem],
     lib_dir: &Path,
     download_dir: &Path,
     r_bin: &Path,
+    jobs: usize,
 ) -> Result<Vec<String>, String> {
     std::fs::create_dir_all(download_dir).map_err(|e| e.to_string())?;
-    let jobs = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(4);
     // 阶段一：并行下载所有 tarball。
     parallel_for_each(plan, jobs, |item| {
         install::download(&item.url, &tarball_path(download_dir, item))
@@ -165,9 +163,10 @@ pub fn install_packages(
     lib_dir: &Path,
     download_dir: &Path,
     r_bin: &Path,
+    jobs: usize,
 ) -> Result<Vec<String>, String> {
     let plan = install_plan(sources, roots).map_err(|e| format!("{e:?}"))?;
-    run_plan(&plan, lib_dir, download_dir, r_bin)
+    run_plan(&plan, lib_dir, download_dir, r_bin, jobs)
 }
 
 /// 纯函数：按 lockfile（已锁定的 `name → version`）在仓库索引里定位每个包、拼下载计划。
@@ -209,11 +208,12 @@ pub fn sync_from_lock(
     lib_dir: &Path,
     download_dir: &Path,
     r_bin: &Path,
+    jobs: usize,
 ) -> Result<Vec<String>, String> {
     let locked =
         lockfile::parse(lockfile_text).ok_or("lockfile 解析失败 / cannot parse lockfile")?;
     let plan = sync_plan(&locked, sources)?;
-    run_plan(&plan, lib_dir, download_dir, r_bin)
+    run_plan(&plan, lib_dir, download_dir, r_bin, jobs)
 }
 
 #[cfg(test)]
@@ -341,6 +341,7 @@ Depends: R (>= 3.0.0), pkgA (>= 1.1.0)
             Path::new("x"),
             Path::new("y"),
             Path::new("R"),
+            4,
         )
         .unwrap_err();
         assert!(err.contains("lockfile"));

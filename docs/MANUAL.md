@@ -1,6 +1,6 @@
 # uvr 用户手册 / User Manual
 
-> 适用版本 / Applies to: **v0.8**　·　中英文对照 / Bilingual (中文 → English)
+> 适用版本 / Applies to: **v0.9**　·　中英文对照 / Bilingual (中文 → English)
 > 教程式逐步讲解见 `docs/lessons/`；本手册是**面向使用**的参考。
 > For a step-by-step tutorial see `docs/lessons/`; this manual is a **usage-oriented** reference.
 
@@ -100,17 +100,19 @@ jsonlite 2.0.1
 ### `uvr install` — 下载并安装到项目本地库 / download & install into a project-local lib
 
 ```
-uvr install --repo <url> [--repo <url2> ...] [--lib <dir>] <package>...
+uvr install --repo <url> [--repo <url2> ...] [--lib <dir>] [--jobs <N>] <package>...
 ```
 
 **中文**
 - 求解（同 `lock`）→ 按**每个包自己的仓库**下载源码 tarball → 用选中的 R 跑 `R CMD INSTALL -l <lib>`。
 - `--lib <dir>`：安装目标目录，默认 `./r-lib`。`-l` 把安装**限定在该目录**，因此**不碰**全局 / 用户级 R 库。
+- `--jobs <N>`：并行下载的并发度，默认 = CPU 核数。tarball 并行预取、安装串行（见 [第 6 节](#6-缓存模型--caching-model)）。
 - 安装前会打印用的是哪个 R，例如 `→ 使用 R / using R 4.5.2: /usr/local/bin/R`（见 [第 5 节](#5-r-版本管理--r-version-management)）。
 
 **English**
 - Resolve (like `lock`) → download source tarballs from **each package's own repo** → run `R CMD INSTALL -l <lib>` with the selected R.
 - `--lib <dir>`: install target, default `./r-lib`. `-l` **confines** the install to that directory, so it **never touches** the global/user R library.
+- `--jobs <N>`: concurrency for parallel downloads, default = CPU count. Tarballs are prefetched in parallel; installs run serially (see [§6](#6-缓存模型--caching-model)).
 - It first prints which R it uses, e.g. `→ 使用 R / using R 4.5.2: /usr/local/bin/R` (see [§5](#5-r-版本管理--r-version-management)).
 
 **中文**　在 R 里使用这个本地库：`.libPaths("./r-lib"); library(dotenv)`，或设环境变量 `R_LIBS_USER=./r-lib`。
@@ -119,7 +121,7 @@ uvr install --repo <url> [--repo <url2> ...] [--lib <dir>] <package>...
 ### `uvr sync` — 按 lockfile 还原环境 / restore from a lockfile
 
 ```
-uvr sync --repo <url> [--repo <url2> ...] [--lib <dir>] [<lockfile>]
+uvr sync --repo <url> [--repo <url2> ...] [--lib <dir>] [--jobs <N>] [<lockfile>]
 ```
 
 **中文**
@@ -190,11 +192,15 @@ uvr r install <version>    # 不自己装：委托 rig 或给出指引 / hands o
 
 重复 `lock` / `install` 命中暖缓存、**免联网**，实测元数据 `lock --repo` 冷 ~640ms → 暖 ~7ms（~94×）。删 `.uvr-cache/` 即清缓存（下次重新抓）。建议把它加入 `.gitignore`。
 
+`install` / `sync` 会**并行**下载所有 tarball（`--jobs <N>`，默认 = CPU 核数）再串行安装；下载彼此独立故可安全并行，`R CMD INSTALL` 仍按序进行。
+
 **English**　uvr caches reusable artifacts under `.uvr-cache/` in your project:
 - `.uvr-cache/meta/`: fetched `PACKAGES` (metadata) per repo.
 - `.uvr-cache/tarballs/`: downloaded source tarballs.
 
 Repeated `lock` / `install` hit the warm cache, **no network needed** — measured `lock --repo` cold ~640ms → warm ~7ms (~94×). Delete `.uvr-cache/` to clear it (re-fetched next time). Add it to `.gitignore`.
+
+`install` / `sync` download all tarballs **in parallel** (`--jobs <N>`, default = CPU count) then install serially; downloads are independent so parallelism is safe, while `R CMD INSTALL` stays ordered.
 
 ---
 

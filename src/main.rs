@@ -2,12 +2,14 @@
 //!
 //! 用法：
 //!   uvr lock    <PACKAGES 文件> <根包>...
-//!   uvr lock    --repo <仓库> [--repo <仓库2> ...] <根包>...
-//!   uvr install --repo <仓库> [--repo <仓库2> ...] [--lib <目录>] <根包>...
-//!   uvr r list | which | pin [<版本>]
+//!   uvr lock    --repo <仓库> [--repo ...] <根包>...
+//!   uvr install --repo <仓库> [--repo ...] [--lib <目录>] [--jobs <N>] <根包>...
+//!   uvr sync    --repo <仓库> [--repo ...] [--lib <目录>] [--jobs <N>] [<lockfile>]
+//!   uvr r list | which | pin [<版本>] | install <版本>
 //!
 //! 多仓库：抓取并合并多个仓库后求解 / 安装。元数据与 tarball 都走 `.uvr-cache/` 暖缓存。
-//! `uvr r ...`：管理本机 R 版本（发现 / 选择 / 项目级钉版本）。
+//! tarball **并行下载**（`--jobs`，默认 = CPU 核数），安装串行。
+//! `uvr sync`：按 lockfile 还原（不求解）。`uvr r ...`：管理本机 R 版本。
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -27,8 +29,12 @@ fn usage() -> ExitCode {
     eprintln!("用法 / usage:");
     eprintln!("  uvr lock    <PACKAGES-file> <root-package>...");
     eprintln!("  uvr lock    --repo <url> [--repo <url2> ...] <root-package>...");
-    eprintln!("  uvr install --repo <url> [--repo <url2> ...] [--lib <dir>] <root-package>...");
-    eprintln!("  uvr sync    --repo <url> [--repo <url2> ...] [--lib <dir>] [<lockfile>]");
+    eprintln!(
+        "  uvr install --repo <url> [--repo <url2> ...] [--lib <dir>] [--jobs <N>] <root-package>..."
+    );
+    eprintln!(
+        "  uvr sync    --repo <url> [--repo <url2> ...] [--lib <dir>] [--jobs <N>] [<lockfile>]"
+    );
     eprintln!(
         "  uvr r list | which | pin [<version>] | install <version>   # 管理 R 版本 / manage R versions"
     );
@@ -136,10 +142,18 @@ fn meta_cache_dir() -> PathBuf {
     PathBuf::from(".uvr-cache/meta")
 }
 
-/// 解析 `--repo`（可多个）、`--lib`，其余作为根包名。
-fn parse_flags(rest: &[String]) -> (Vec<String>, PathBuf, Vec<String>) {
+/// 默认并行下载并发度 = CPU 核数（取不到则退回 4）。
+fn default_jobs() -> usize {
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+}
+
+/// 解析 `--repo`（可多个）、`--lib`、`--jobs <N>`，其余作为位置参数（包名 / lockfile 路径）。
+fn parse_flags(rest: &[String]) -> (Vec<String>, PathBuf, usize, Vec<String>) {
     let mut repos = Vec::new();
     let mut lib = PathBuf::from("r-lib");
+    let mut jobs = default_jobs();
     let mut roots = Vec::new();
     let mut i = 0;
     while i < rest.len() {
@@ -152,13 +166,18 @@ fn parse_flags(rest: &[String]) -> (Vec<String>, PathBuf, Vec<String>) {
                 lib = PathBuf::from(&rest[i + 1]);
                 i += 2;
             }
+            "--jobs" if i + 1 < rest.len() => {
+                // 非法 / 0 都退回默认值，并保证至少 1。
+                jobs = rest[i + 1].parse().unwrap_or(jobs).max(1);
+                i += 2;
+            }
             other => {
                 roots.push(other.to_string());
                 i += 1;
             }
         }
     }
-    (repos, lib, roots)
+    (repos, lib, jobs, roots)
 }
 
 /// 抓取每个仓库的 PACKAGES（走缓存），组成 (文本, 仓库) 源列表。
@@ -188,7 +207,7 @@ fn finish_lock(sources: &[(String, String)], roots: &[String]) -> ExitCode {
 
 fn lock(rest: &[String]) -> ExitCode {
     if rest.iter().any(|a| a == "--repo") {
-        let (repos, _lib, roots) = parse_flags(rest);
+        let (repos, _lib, _jobs, roots) = parse_flags(rest);
         match fetch_sources(&repos, &meta_cache_dir()) {
             Ok(sources) => finish_lock(&sources, &roots),
             Err(e) => {
@@ -211,7 +230,7 @@ fn lock(rest: &[String]) -> ExitCode {
 }
 
 fn install(rest: &[String]) -> ExitCode {
-    let (repos, lib, roots) = parse_flags(rest);
+    let (repos, lib, jobs, roots) = parse_flags(rest);
     if repos.is_empty() {
         eprintln!("install 需要 --repo <url> / install needs --repo <url>");
         return usage();
@@ -232,7 +251,7 @@ fn install(rest: &[String]) -> ExitCode {
         return ExitCode::FAILURE;
     };
     let download_dir = PathBuf::from(".uvr-cache/tarballs");
-    match uvr::commands::install_packages(&sources, &roots, &lib, &download_dir, &r_bin) {
+    match uvr::commands::install_packages(&sources, &roots, &lib, &download_dir, &r_bin, jobs) {
         Ok(installed) => {
             for p in &installed {
                 println!("installed {p}");
@@ -253,7 +272,7 @@ fn install(rest: &[String]) -> ExitCode {
 /// `uvr sync --repo <url>... [--lib <dir>] [<lockfile>]`：按 lockfile 还原环境（不求解）。
 /// 省略 lockfile 路径时默认读 `uvr.lock`。
 fn sync(rest: &[String]) -> ExitCode {
-    let (repos, lib, positional) = parse_flags(rest);
+    let (repos, lib, jobs, positional) = parse_flags(rest);
     if repos.is_empty() {
         eprintln!("sync 需要 --repo <url>（下载来源）/ sync needs --repo <url>");
         return usage();
@@ -277,7 +296,7 @@ fn sync(rest: &[String]) -> ExitCode {
         return ExitCode::FAILURE;
     };
     let download_dir = PathBuf::from(".uvr-cache/tarballs");
-    match uvr::commands::sync_from_lock(&text, &sources, &lib, &download_dir, &r_bin) {
+    match uvr::commands::sync_from_lock(&text, &sources, &lib, &download_dir, &r_bin, jobs) {
         Ok(installed) => {
             for p in &installed {
                 println!("synced {p}");
