@@ -27,7 +27,9 @@ fn usage() -> ExitCode {
     eprintln!("  uvr lock    <PACKAGES-file> <root-package>...");
     eprintln!("  uvr lock    --repo <url> [--repo <url2> ...] <root-package>...");
     eprintln!("  uvr install --repo <url> [--repo <url2> ...] [--lib <dir>] <root-package>...");
-    eprintln!("  uvr r list | which | pin [<version>]   # 管理 R 版本 / manage R versions");
+    eprintln!(
+        "  uvr r list | which | pin [<version>] | install <version>   # 管理 R 版本 / manage R versions"
+    );
     ExitCode::FAILURE
 }
 
@@ -37,11 +39,24 @@ fn r_command(rest: &[String]) -> ExitCode {
         Some("list") => r_list(),
         Some("which") => r_which(),
         Some("pin") => r_pin(&rest[1..]),
+        Some("install") => r_install(&rest[1..]),
         _ => {
-            eprintln!("用法 / usage: uvr r list | which | pin [<version>]");
+            eprintln!("用法 / usage: uvr r list | which | pin [<version>] | install <version>");
             ExitCode::FAILURE
         }
     }
+}
+
+/// `uvr r install <版本>`：uvr 不做系统级安装，委托 `rig` 或给出清晰指引（资源墙交接）。
+fn r_install(args: &[String]) -> ExitCode {
+    let Some(spec) = args.first() else {
+        eprintln!("用法 / usage: uvr r install <version>");
+        return ExitCode::FAILURE;
+    };
+    let present = uvr::rversion::rig_available();
+    println!("{}", uvr::rversion::rig_install_hint(spec, present));
+    // 没有实际安装，返回失败让脚本能据此判断（诚实：这一步把活交还给了你 / rig）。
+    ExitCode::FAILURE
 }
 
 /// `uvr r list`：列出发现到的所有 R，并用 `*` 标出当前会选中的那个。
@@ -195,8 +210,19 @@ fn install(rest: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    // 用按 pin > 最高 解析出的那个 R 来跑 R CMD INSTALL；钉了却没装就明确报错、不偷偷换 R。
+    let r_bin = match uvr::rversion::resolve_r(Path::new(".")) {
+        Ok(r) => {
+            eprintln!("→ 使用 R / using R {}: {}", r.version, r.path.display());
+            r.path
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
     let download_dir = PathBuf::from(".uvr-cache/tarballs");
-    match uvr::commands::install_packages(&sources, &roots, &lib, &download_dir) {
+    match uvr::commands::install_packages(&sources, &roots, &lib, &download_dir, &r_bin) {
         Ok(installed) => {
             for p in &installed {
                 println!("installed {p}");

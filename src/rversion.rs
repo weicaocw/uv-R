@@ -177,6 +177,31 @@ pub fn resolve_r(project_dir: &Path) -> Result<RInstall, RSelectError> {
     select_r(pin.as_deref(), &discover())
 }
 
+/// `rig`（R 版本管理器）是否可用——安装一个新 R 时优先委托给它。
+pub fn rig_available() -> bool {
+    Command::new("rig")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// 纯函数：生成"如何获取一个新 R"的指引。
+///
+/// uvr **不**自己做系统级安装（需管理员权限 / 下载几百 MB），而是把这一步交给
+/// `rig` 或交还用户——这与"绝不擅自污染系统环境"的底线一致。
+pub fn rig_install_hint(spec: &str, rig_present: bool) -> String {
+    if rig_present {
+        format!(
+            "uvr 不自己安装 R（系统级操作）。检测到 rig，请运行 / detected rig, run:\n  rig add {spec}\n装好后 uvr 会自动发现它 / uvr will then discover it."
+        )
+    } else {
+        format!(
+            "uvr 不自己安装 R（系统级操作）/ uvr does not install R itself.\n推荐用 rig（R 版本管理器）/ recommended: rig (the R installation manager):\n  https://github.com/r-lib/rig\n  rig add {spec}\n或从 CRAN 下载 / or download from CRAN: https://cran.r-project.org"
+        )
+    }
+}
+
 /// 从 `R --version` 的输出里解析出版本号。
 ///
 /// 典型首行：`R version 4.5.2 (2025-10-31) -- "..."`。
@@ -356,5 +381,14 @@ mod tests {
         assert!(RSelectError::NoRInstalled.to_string().contains("no R"));
         let e = RSelectError::PinnedNotFound("3.6".to_string());
         assert!(e.to_string().contains("3.6"));
+    }
+
+    #[test]
+    fn rig_hint_mentions_spec_and_rig() {
+        let with = rig_install_hint("4.4", true);
+        assert!(with.contains("rig add 4.4"));
+        let without = rig_install_hint("4.4", false);
+        assert!(without.contains("rig")); // 没装也指向 rig
+        assert!(without.contains("4.4"));
     }
 }
