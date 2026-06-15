@@ -1,6 +1,6 @@
 # uvr 用户手册 / User Manual
 
-> 适用版本 / Applies to: **v0.9**　·　中英文对照 / Bilingual (中文 → English)
+> 适用版本 / Applies to: **v0.10**　·　中英文对照 / Bilingual (中文 → English)
 > 教程式逐步讲解见 `docs/lessons/`；本手册是**面向使用**的参考。
 > For a step-by-step tutorial see `docs/lessons/`; this manual is a **usage-oriented** reference.
 
@@ -121,20 +121,20 @@ uvr install --repo <url> [--repo <url2> ...] [--lib <dir>] [--jobs <N>] <package
 ### `uvr sync` — 按 lockfile 还原环境 / restore from a lockfile
 
 ```
-uvr sync --repo <url> [--repo <url2> ...] [--lib <dir>] [--jobs <N>] [<lockfile>]
+uvr sync [--repo <url> ...] [--lib <dir>] [--jobs <N>] [<lockfile>]
 ```
 
 **中文**
 - 读 lockfile（省略则默认 `uvr.lock`），**不求解**，严格安装其中锁定的版本——可复现、防漂移。
-- `--repo`：下载来源（lockfile v1 不记来源仓库，故仍需提供）；`--lib`：目标库，默认 `./r-lib`。
-- 锁定的版本在仓库里找不到（被下架 / 换了仓库）会报错并指名是哪个包。
-- 典型工作流：`uvr lock --repo ... pkg > uvr.lock`（提交进库）→ 队友 / CI / 新机器 `uvr sync --repo ...` 还原一模一样的依赖。
+- `--repo` **可选**：v2 锁文件自带来源仓库，直接 `uvr sync` 即可；仅旧的 v1 锁文件（无来源）才需要 `--repo` 兜底。`--lib`：目标库，默认 `./r-lib`。
+- 锁定的版本在来源里找不到（被下架 / 换了仓库），或 v1 锁文件没给 `--repo`，会报错并指名是哪个包。
+- 典型工作流：`uvr lock --repo ... pkg > uvr.lock`（提交进库）→ 队友 / CI / 新机器 **`uvr sync`**（无需 `--repo`）还原一模一样的依赖。
 
 **English**
 - Read a lockfile (default `uvr.lock` if omitted), **without resolving**, and install exactly the locked versions — reproducible, no drift.
-- `--repo`: download source (lockfile v1 doesn't record origin repos, so still required); `--lib`: target lib, default `./r-lib`.
-- If a locked version isn't in the repos (yanked / repo changed), it errors and names the package.
-- Workflow: `uvr lock --repo ... pkg > uvr.lock` (commit it) → teammates / CI / a fresh machine run `uvr sync --repo ...` to restore identical deps.
+- `--repo` is **optional**: a v2 lockfile carries its source repos, so a bare `uvr sync` works; only old v1 lockfiles (no sources) need `--repo`. `--lib`: target lib, default `./r-lib`.
+- If a locked version isn't found in the sources (yanked / repo changed), or a v1 lockfile lacks `--repo`, it errors and names the package.
+- Workflow: `uvr lock --repo ... pkg > uvr.lock` (commit it) → teammates / CI / a fresh machine run **`uvr sync`** (no `--repo`) to restore identical deps.
 
 ### `uvr r` — 管理 R 版本 / manage R versions
 

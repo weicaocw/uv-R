@@ -33,7 +33,7 @@ fn usage() -> ExitCode {
         "  uvr install --repo <url> [--repo <url2> ...] [--lib <dir>] [--jobs <N>] <root-package>..."
     );
     eprintln!(
-        "  uvr sync    --repo <url> [--repo <url2> ...] [--lib <dir>] [--jobs <N>] [<lockfile>]"
+        "  uvr sync    [--repo <url> ...] [--lib <dir>] [--jobs <N>] [<lockfile>]   # v2 锁文件无需 --repo"
     );
     eprintln!(
         "  uvr r list | which | pin [<version>] | install <version>   # 管理 R 版本 / manage R versions"
@@ -273,10 +273,8 @@ fn install(rest: &[String]) -> ExitCode {
 /// 省略 lockfile 路径时默认读 `uvr.lock`。
 fn sync(rest: &[String]) -> ExitCode {
     let (repos, lib, jobs, positional) = parse_flags(rest);
-    if repos.is_empty() {
-        eprintln!("sync 需要 --repo <url>（下载来源）/ sync needs --repo <url>");
-        return usage();
-    }
+    // `--repo` 现在可选：v2 锁文件自带来源仓库，直接 `uvr sync` 即可还原；
+    // 仅当锁文件是旧的 v1（无仓库）时才需要 `--repo` 兜底（缺了会在 sync_from_lock 里清楚报错）。
     let lockpath = positional.first().map(String::as_str).unwrap_or("uvr.lock");
     let text = match std::fs::read_to_string(lockpath) {
         Ok(t) => t,
