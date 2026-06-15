@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.12.0 — 完整性校验 / Integrity verification
+
+**中文**
+- **校验和（模块 R）**：lockfile **v3** 记录每个包的校验和（仓库声明的 `SHA256`，回退 `MD5sum`）。`install` / `sync` 下载后、安装前**校验 SHA256**，不符即报错拒装——防传输损坏 / 篡改。空或非 sha256（CRAN 的 md5）暂跳过（记录但不阻断）。
+- **可复现且可信**：锁版本（防漂移）+ 锁来源（v2 自包含）+ 锁校验和（防篡改）。新增依赖 `sha2`（项目本地，不污染系统）。
+- **质量**：69 个单元测试（+3 `#[ignore]`），fmt + clippy 全绿。演示：篡改缓存 tarball 后 `sync` 检测到校验和不符并拒装。新增教学课 43–44。
+
+**English**
+- **Checksums (Module R)**: lockfile **v3** records each package's checksum (the repo-declared `SHA256`, falling back to `MD5sum`). `install` / `sync` **verify SHA256** after download and before install, erroring out on a mismatch — guarding against corruption/tampering. Empty or non-sha256 (CRAN's md5) is skipped for now (recorded, not enforced).
+- **Reproducible and trustworthy**: lock the version (no drift) + lock the source (v2 self-contained) + lock the checksum (no tampering). New dependency `sha2` (project-local, no system pollution).
+- **Quality**: 69 unit tests (+3 `#[ignore]`), fmt + clippy clean. Demo: after tampering with a cached tarball, `sync` detects the checksum mismatch and refuses to install. New lessons 43–44.
+
 ## v0.11.0 — 拓扑序安装 / Topological install order
 
 **中文**

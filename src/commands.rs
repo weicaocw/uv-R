@@ -77,11 +77,13 @@ fn run_plan(
     parallel_for_each(plan, jobs, |item| {
         install::download(&item.url, &tarball_path(download_dir, item))
     })?;
-    // 阶段二：串行安装（download 此时多为缓存命中）。
+    // 阶段二：校验完整性后串行安装（download 此时多为缓存命中）。
     let mut installed = Vec::new();
     for item in plan {
         let tarball = tarball_path(download_dir, item);
         install::download(&item.url, &tarball)?;
+        install::verify_hash(&tarball, &item.hash)
+            .map_err(|e| format!("{} {}: {e}", item.name, item.version))?;
         install::install_tarball(&tarball, lib_dir, r_bin)?;
         installed.push(format!("{} {}", item.name, item.version));
     }

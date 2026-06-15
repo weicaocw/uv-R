@@ -1,10 +1,11 @@
 [package]
 name = "uvr"
-version = "0.11.0"
+version = "0.12.0"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 pubgrub = "0.4.0"
+sha2 = "0.10"
 ureq = "2"

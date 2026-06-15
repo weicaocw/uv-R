@@ -28,6 +28,29 @@ pub fn download(url: &str, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// 校验文件的 SHA256 是否与 `expected` 相符。
+///
+/// `expected` 形如 `sha256:<hex>`；为空或非 `sha256:`（如 CRAN 的 `md5:`）则**跳过**校验、放行
+/// （MD5 校验暂未实现，记录但不阻断）。不符则返回错误，调用方据此**拒绝安装**——防传输损坏 / 篡改。
+pub fn verify_hash(file: &Path, expected: &str) -> Result<(), String> {
+    use sha2::{Digest, Sha256};
+    let Some(want) = expected.strip_prefix("sha256:") else {
+        return Ok(()); // 空 / 非 sha256：暂不校验
+    };
+    let bytes = std::fs::read(file).map_err(|e| e.to_string())?;
+    let got: String = Sha256::digest(&bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    if got.eq_ignore_ascii_case(want) {
+        Ok(())
+    } else {
+        Err(format!(
+            "校验和不符 / checksum mismatch: 期望/expected {want}, 实得/got {got}"
+        ))
+    }
+}
+
 /// 用 `<r_bin> CMD INSTALL -l <lib_dir>` 把 tarball 装进**指定的项目本地库**。
 ///
 /// `-l <lib_dir>` 把安装目标限定在我们给的目录，因此不会污染系统 / 用户级 R 库。
@@ -52,6 +75,24 @@ pub fn install_tarball(tarball: &Path, lib_dir: &Path, r_bin: &Path) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn verify_accepts_correct_skips_empty_rejects_wrong() {
+        use sha2::{Digest, Sha256};
+        let dir = std::path::PathBuf::from("target/test-verify");
+        let _ = std::fs::create_dir_all(&dir);
+        let f = dir.join("blob");
+        std::fs::write(&f, b"uvr integrity test").unwrap();
+        let hex: String = Sha256::digest(b"uvr integrity test")
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        assert!(verify_hash(&f, &format!("sha256:{hex}")).is_ok()); // 正确 → 通过
+        assert!(verify_hash(&f, "sha256:0000").is_err()); // 错误 → 拒绝
+        assert!(verify_hash(&f, "").is_ok()); // 空 → 跳过
+        assert!(verify_hash(&f, "md5:whatever").is_ok()); // 非 sha256 → 跳过
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn builds_tarball_url() {
