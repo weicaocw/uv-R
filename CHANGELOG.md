@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.10.0 — 自包含 lockfile v2 / Self-contained lockfile v2
+
+**中文**
+- **lockfile v2（模块 P）**：锁文件多记一列**来源仓库**（`name version repo`）。`uvr lock` 现产出 v2；解析**向后兼容** v1（两列）。
+- **`uvr sync` 自包含**：`--repo` 变**可选**——v2 锁文件自带来源，一句 `uvr sync` 即可还原（对标 `cargo build` 读 `Cargo.lock`、`npm ci`）。旧 v1 锁文件 + `--repo` 仍可用。
+- **质量**：62 个单元测试（+3 `#[ignore]`），fmt + clippy 全绿。本机演示 `lock → sync`（**不带 `--repo`**）还原 dotenv 1.0.3.9000。新增教学课 40–41。
+
+**English**
+- **lockfile v2 (Module P)**: the lockfile records a third column, the **source repo** (`name version repo`). `uvr lock` now emits v2; parsing is **backward-compatible** with v1 (two columns).
+- **Self-contained `uvr sync`**: `--repo` is now **optional** — a v2 lockfile carries its sources, so a bare `uvr sync` restores (like `cargo build` reading `Cargo.lock`, `npm ci`). Old v1 lockfiles + `--repo` still work.
+- **Quality**: 62 unit tests (+3 `#[ignore]`), fmt + clippy clean. Demo restores dotenv 1.0.3.9000 via `lock → sync` **without `--repo`**. New lessons 40–41.
+
 ## v0.9.0 — 并行下载 / Parallel downloads
 
 **中文**
