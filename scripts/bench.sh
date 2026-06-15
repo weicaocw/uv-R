@@ -62,3 +62,24 @@ echo "| uvr lock --repo（元数据） | min ms |"
 echo "|---|---|"
 echo "| cold（无缓存·联网抓） | $COLD |"
 echo "| warm（暖缓存·免联网） | $WARM |"
+
+# —— 端到端安装（uvr vs pak，纯 R 包装进临时库；两边都不编译，公平）——
+ULIB="/tmp/uvr_bench_lib"
+PLIB="/tmp/pak_bench_lib"
+rm -rf .uvr-cache "$ULIB"
+mkdir -p "$ULIB"
+UVR_ICOLD=$(once_ms "$UVR" install --repo "$REPO" "$PKG" --lib "$ULIB") # 冷：清缓存+空库
+rm -rf "$ULIB"
+mkdir -p "$ULIB"
+UVR_IWARM=$(once_ms "$UVR" install --repo "$REPO" "$PKG" --lib "$ULIB") # 暖：缓存命中，重装
+Rscript -e "pak::pkg_install('$PKG', lib='$PLIB', ask=FALSE)" >/dev/null 2>&1 || true # pak 预热
+rm -rf "$PLIB"
+mkdir -p "$PLIB"
+PAK_I=$(once_ms Rscript -e "pak::pkg_install('$PKG', lib='$PLIB', ask=FALSE)") # pak warm
+echo
+echo "| 端到端安装 ${PKG}（装进临时库·纯R不编译） | ms (single) |"
+echo "|---|---|"
+echo "| uvr cold（清缓存） | $UVR_ICOLD |"
+echo "| uvr warm（暖缓存） | $UVR_IWARM |"
+echo "| pak  warm | $PAK_I |"
+rm -rf "$ULIB" "$PLIB"
