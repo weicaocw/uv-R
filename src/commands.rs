@@ -5,6 +5,7 @@
 
 use crate::install;
 use crate::lockfile;
+use crate::lockfile::Locked;
 use crate::metadata::PackageIndex;
 use crate::resolver::{ResolveError, resolve_pubgrub};
 use crate::version::Version;
@@ -111,10 +112,30 @@ fn resolve_all(
     Ok(combined)
 }
 
-/// 多源求解并渲染 lockfile 文本。
+/// 给求解结果（name → version）补上每个包的**来源仓库**，得到可写进 v2 lockfile 的锁定项。
+fn with_repos(
+    index: &PackageIndex,
+    resolved: BTreeMap<String, Version>,
+) -> BTreeMap<String, Locked> {
+    resolved
+        .into_iter()
+        .map(|(name, version)| {
+            let repo = index
+                .versions_of(&name)
+                .iter()
+                .find(|p| p.version == version)
+                .map(|p| p.repo.clone())
+                .unwrap_or_default();
+            (name, Locked { version, repo })
+        })
+        .collect()
+}
+
+/// 多源求解并渲染 lockfile 文本（v2：含来源仓库）。
 pub fn lock_from_sources(sources: &[Source], roots: &[String]) -> Result<String, ResolveError> {
     let index = build_index(sources);
-    Ok(lockfile::render(&resolve_all(&index, roots)?))
+    let resolved = resolve_all(&index, roots)?;
+    Ok(lockfile::render(&with_repos(&index, resolved)))
 }
 
 /// 单一本地 `PACKAGES` 文本的便捷封装（来源仓库为空）。
@@ -169,32 +190,41 @@ pub fn install_packages(
     run_plan(&plan, lib_dir, download_dir, r_bin, jobs)
 }
 
-/// 纯函数：按 lockfile（已锁定的 `name → version`）在仓库索引里定位每个包、拼下载计划。
+/// 纯函数：按 lockfile（已锁定的 `name → 锁定项`）拼下载计划。
 ///
 /// 与 `install_plan` 的关键区别：**不求解**。它严格安装 lockfile 里写死的版本，
 /// 即使仓库里已有更高版本——这正是 `sync` 的意义：可复现，杜绝"求解漂移"。
-/// 锁定的版本在索引里找不到（仓库变了 / 包没了）则报错并指名是哪个包。
+///
+/// 来源仓库**优先用 lockfile 里记的**（v2，自包含）；若为空（v1 旧锁文件）则回退到
+/// `sources` 索引里查找。两者都拿不到则报错并指名是哪个包。
 pub fn sync_plan(
-    locked: &BTreeMap<String, Version>,
+    locked: &BTreeMap<String, Locked>,
     sources: &[Source],
 ) -> Result<Vec<InstallItem>, String> {
     let index = build_index(sources);
     locked
         .iter()
-        .map(|(name, version)| {
-            let found = index
-                .versions_of(name)
-                .iter()
-                .find(|p| p.version == *version)
-                .ok_or_else(|| {
-                    format!(
-                        "锁定的 {name} {version} 在仓库里找不到 / locked {name} {version} not found in repos"
-                    )
-                })?;
-            let url = install::tarball_url(&found.repo, name, &version.to_string());
+        .map(|(name, lk)| {
+            let repo = if lk.repo.is_empty() {
+                // v1 回退：从提供的 --repo 索引里找该包该版本的仓库。
+                index
+                    .versions_of(name)
+                    .iter()
+                    .find(|p| p.version == lk.version)
+                    .map(|p| p.repo.clone())
+                    .ok_or_else(|| {
+                        format!(
+                            "锁定的 {name} {} 找不到来源（lockfile 无仓库且 --repo 里也没有）/ no source for locked {name} {}",
+                            lk.version, lk.version
+                        )
+                    })?
+            } else {
+                lk.repo.clone()
+            };
+            let url = install::tarball_url(&repo, name, &lk.version.to_string());
             Ok(InstallItem {
                 name: name.clone(),
-                version: version.to_string(),
+                version: lk.version.to_string(),
                 url,
             })
         })
@@ -313,23 +343,41 @@ Depends: R (>= 3.0.0), pkgA (>= 1.1.0)
         assert!(parallel_for_each(&[], 4, |_| Ok(())).is_ok());
     }
 
+    fn locked(ver: &str, repo: &str) -> Locked {
+        Locked {
+            version: Version::parse(ver).unwrap(),
+            repo: repo.to_string(),
+        }
+    }
+
     #[test]
     fn sync_plan_installs_exact_locked_version_no_drift() {
-        // 索引里有 pkgA 1.0.0 和 1.2.0；锁定 1.0.0 → 计划必须用 1.0.0（不漂到 1.2.0）。
-        let mut locked = BTreeMap::new();
-        locked.insert("pkgA".to_string(), Version::parse("1.0.0").unwrap());
-        let plan = sync_plan(&locked, &one_source("https://repo.example")).unwrap();
+        // 索引里有 pkgA 1.0.0 和 1.2.0；锁定 1.0.0（v1 无仓库，回退索引）→ 计划必须用 1.0.0。
+        let mut lk = BTreeMap::new();
+        lk.insert("pkgA".to_string(), locked("1.0.0", ""));
+        let plan = sync_plan(&lk, &one_source("https://repo.example")).unwrap();
         let a = plan.iter().find(|i| i.name == "pkgA").unwrap();
         assert_eq!(a.version, "1.0.0");
         assert_eq!(a.url, "https://repo.example/src/contrib/pkgA_1.0.0.tar.gz");
     }
 
     #[test]
-    fn sync_plan_errors_on_unknown_locked_version() {
-        let mut locked = BTreeMap::new();
-        locked.insert("pkgA".to_string(), Version::parse("9.9.9").unwrap());
-        let err = sync_plan(&locked, &one_source("https://repo.example")).unwrap_err();
-        assert!(err.contains("pkgA")); // 报错指名是哪个包
+    fn sync_plan_v2_self_contained_without_sources() {
+        // v2：lockfile 自带仓库 → 不传任何 --repo（sources 为空）也能拼出地址。
+        let mut lk = BTreeMap::new();
+        lk.insert("pkgA".to_string(), locked("1.0.0", "https://locked-repo"));
+        let plan = sync_plan(&lk, &[]).unwrap();
+        let a = plan.iter().find(|i| i.name == "pkgA").unwrap();
+        assert_eq!(a.url, "https://locked-repo/src/contrib/pkgA_1.0.0.tar.gz");
+    }
+
+    #[test]
+    fn sync_plan_errors_when_no_source_anywhere() {
+        // v1 无仓库 + sources 里也没有 → 报错指名是哪个包。
+        let mut lk = BTreeMap::new();
+        lk.insert("pkgA".to_string(), locked("9.9.9", ""));
+        let err = sync_plan(&lk, &one_source("https://repo.example")).unwrap_err();
+        assert!(err.contains("pkgA"));
     }
 
     #[test]
