@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.4.0 — 多仓库 / Multi-repo
+
+**中文**
+- **多仓库（模块 H）**：合并多个仓库的 `PACKAGES` 后求解，解开跨仓库依赖（如 r-universe 包依赖另一仓库的包）；`uvr lock`/`install` 支持多个 `--repo`；安装时按每个包**自己的仓库**下载。
+- **质量**：31 个单元测试；CI 全绿。新增教学课 24–25。
+
+**English**
+- **Multi-repo (Module H)**: resolve across merged repository indexes, fixing cross-repo dependencies; `uvr lock`/`install` accept multiple `--repo`; each package is downloaded from its own repo.
+- **Quality**: 31 unit tests; CI green. New lessons 24–25.
+
 ## v0.3.0 — pubgrub 回溯求解器 / pubgrub backtracking resolver
 
 **中文**

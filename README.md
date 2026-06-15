@@ -48,9 +48,9 @@ installed dotenv 1.0.3.9000
 
 ## 路线图 / Roadmap (v0.4+)
 
-- ✅ 已升级为工业级 [`pubgrub`](https://github.com/pubgrub-rs/pubgrub) 回溯求解器（v0.3）。
-- 合并多仓库索引（解决跨仓库依赖 `NotFound`）。
-- 元数据 / 下载缓存；binary 包优先；并行下载安装。
+- ✅ 工业级 [`pubgrub`](https://github.com/pubgrub-rs/pubgrub) 回溯求解器（v0.3）。
+- ✅ 合并多仓库索引、跨仓库依赖（v0.4）。
+- 元数据 / 下载缓存（暖缓存）· binary 包优先（免编译）· 并行下载安装 —— 目标：能与 pak 做**端到端**公平对比。
 
 ## 怎么学 / How it's taught
 
