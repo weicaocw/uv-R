@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.3.0 — pubgrub 回溯求解器 / pubgrub backtracking resolver
+
+**中文**
+- **接入 pubgrub 0.4**（模块 D′）：用 `OfflineDependencyProvider` 把依赖图交给工业级求解器；约束转 `Ranges`，`Version` 实现与 `Eq` 一致的 `Hash`。
+- **默认启用回溯求解**：`uvr lock` / `uvr install` 改用 `resolve_pubgrub`，能解开手写贪心版会误判为冲突的情形。手写贪心求解器保留作对照与教学。
+- **质量**：28 个单元测试（含 pubgrub 一致性与回溯用例）；CI 全绿；端到端 demo 照常。
+- 新增教学课 22–23。
+
+**English**
+- **Integrate pubgrub 0.4** (Module D'): hand the dependency graph to the industrial resolver via `OfflineDependencyProvider`; constraints → `Ranges`; `Version` implements a `Hash` consistent with its `Eq`.
+- **Backtracking by default**: `uvr lock` / `uvr install` use `resolve_pubgrub`, solving cases the greedy resolver falsely reports as conflicts. The hand-written greedy resolver is kept for comparison/teaching.
+- **Quality**: 28 unit tests (incl. pubgrub agreement & backtracking); CI green; end-to-end demos unaffected.
+- New lessons 22–23.
+
 ## v0.2.0 — 联网、安装、benchmark / Networking, install, benchmark
 
 **中文**

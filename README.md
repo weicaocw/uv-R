@@ -43,12 +43,12 @@ installed dotenv 1.0.3.9000
 **对 pak 的诚实 benchmark / honest benchmark vs pak**：见 [`BENCHMARK.md`](BENCHMARK.md)
 （一次性解析：uvr ~5 ms vs pak ~5.2 s；安装这类重活诚实报"打平"）。
 
-七章全部完成：版本模型 · 元数据(DCF/依赖图) · 联网 · 依赖求解(传递/冲突/lockfile) · 下载安装 · CLI · benchmark。
-26 个单元测试 + CI（fmt / clippy / build / test）。
+全部完成：版本模型 · 元数据(DCF/依赖图) · 联网 · 依赖求解（**pubgrub 回溯**，手写贪心版作对照） · 下载安装 · CLI · benchmark。
+28 个单元测试 + CI（fmt / clippy / build / test）。
 
-## 路线图 / Roadmap (v0.3+)
+## 路线图 / Roadmap (v0.4+)
 
-- 把手写教学求解器升级为工业级 [`pubgrub`](https://github.com/pubgrub-rs/pubgrub)（带回溯）。
+- ✅ 已升级为工业级 [`pubgrub`](https://github.com/pubgrub-rs/pubgrub) 回溯求解器（v0.3）。
 - 合并多仓库索引（解决跨仓库依赖 `NotFound`）。
 - 元数据 / 下载缓存；binary 包优先；并行下载安装。
 
