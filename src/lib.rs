@@ -4,6 +4,7 @@
 
 pub mod commands;
 pub mod fetch;
+pub mod install;
 pub mod lockfile;
 pub mod metadata;
 pub mod resolver;
