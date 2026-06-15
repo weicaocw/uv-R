@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.13.0 — MD5 校验（兼容 CRAN）/ MD5 verification (CRAN)
+
+**中文**
+- **MD5 校验（模块 S）**：完整性校验现在也支持 **MD5**（CRAN 直连仓库在 `PACKAGES` 里给的是 `MD5sum`）。`verify_hash` 按算法前缀分派（`sha256:` / `md5:`），未知 / 无前缀则跳过。补齐了 v0.12 留下的"md5 暂跳过"口子。
+- **质量**：69 个单元测试（+3 `#[ignore]`），fmt + clippy 全绿。演示：`lock praise`（CRAN，md5）→ `sync` 用 md5 校验后安装；篡改后 `sync` 检测到 md5 不符并拒装。新增依赖 `md-5`（项目本地）。新增教学课 45。
+
+**English**
+- **MD5 verification (Module S)**: integrity checks now also support **MD5** (CRAN's direct `PACKAGES` provides `MD5sum`). `verify_hash` dispatches on the algorithm prefix (`sha256:` / `md5:`), skipping unknown / prefix-less hashes. Closes the "md5 skipped for now" gap left by v0.12.
+- **Quality**: 69 unit tests (+3 `#[ignore]`), fmt + clippy clean. Demo: `lock praise` (CRAN, md5) → `sync` verifies via md5 then installs; after tampering, `sync` detects the md5 mismatch and refuses. New dependency `md-5` (project-local). New lesson 45.
+
 ## v0.12.0 — 完整性校验 / Integrity verification
 
 **中文**

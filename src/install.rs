@@ -28,25 +28,33 @@ pub fn download(url: &str, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// 校验文件的 SHA256 是否与 `expected` 相符。
+/// 把字节切片渲染成小写十六进制串。
+fn to_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// 校验文件内容的校验和是否与 `expected` 相符。
 ///
-/// `expected` 形如 `sha256:<hex>`；为空或非 `sha256:`（如 CRAN 的 `md5:`）则**跳过**校验、放行
-/// （MD5 校验暂未实现，记录但不阻断）。不符则返回错误，调用方据此**拒绝安装**——防传输损坏 / 篡改。
+/// `expected` 形如 `sha256:<hex>`（r-universe / PPM）或 `md5:<hex>`（CRAN）。按算法前缀分派计算；
+/// 为空、无前缀或未知算法则**跳过**校验、放行（不假装能验证拿不到的东西）。
+/// 不符则返回错误，调用方据此**拒绝安装**——防传输损坏 / 篡改。
 pub fn verify_hash(file: &Path, expected: &str) -> Result<(), String> {
+    use md5::Md5;
     use sha2::{Digest, Sha256};
-    let Some(want) = expected.strip_prefix("sha256:") else {
-        return Ok(()); // 空 / 非 sha256：暂不校验
+    let Some((algo, want)) = expected.split_once(':') else {
+        return Ok(()); // 空 / 无前缀：跳过
     };
     let bytes = std::fs::read(file).map_err(|e| e.to_string())?;
-    let got: String = Sha256::digest(&bytes)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
+    let got = match algo {
+        "sha256" => to_hex(&Sha256::digest(&bytes)),
+        "md5" => to_hex(&Md5::digest(&bytes)),
+        _ => return Ok(()), // 未知算法：跳过
+    };
     if got.eq_ignore_ascii_case(want) {
         Ok(())
     } else {
         Err(format!(
-            "校验和不符 / checksum mismatch: 期望/expected {want}, 实得/got {got}"
+            "{algo} 校验和不符 / checksum mismatch: 期望/expected {want}, 实得/got {got}"
         ))
     }
 }
@@ -77,20 +85,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn verify_accepts_correct_skips_empty_rejects_wrong() {
+    fn verify_handles_sha256_md5_skip_and_mismatch() {
+        use md5::Md5;
         use sha2::{Digest, Sha256};
         let dir = std::path::PathBuf::from("target/test-verify");
         let _ = std::fs::create_dir_all(&dir);
         let f = dir.join("blob");
-        std::fs::write(&f, b"uvr integrity test").unwrap();
-        let hex: String = Sha256::digest(b"uvr integrity test")
+        let content = b"uvr integrity test";
+        std::fs::write(&f, content).unwrap();
+        let sha: String = Sha256::digest(content)
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect();
-        assert!(verify_hash(&f, &format!("sha256:{hex}")).is_ok()); // 正确 → 通过
-        assert!(verify_hash(&f, "sha256:0000").is_err()); // 错误 → 拒绝
+        let md5: String = Md5::digest(content)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        assert!(verify_hash(&f, &format!("sha256:{sha}")).is_ok()); // sha256 正确
+        assert!(verify_hash(&f, &format!("md5:{md5}")).is_ok()); // md5 正确
+        assert!(verify_hash(&f, "sha256:0000").is_err()); // sha256 错误 → 拒绝
+        assert!(verify_hash(&f, "md5:0000").is_err()); // md5 错误 → 拒绝
         assert!(verify_hash(&f, "").is_ok()); // 空 → 跳过
-        assert!(verify_hash(&f, "md5:whatever").is_ok()); // 非 sha256 → 跳过
+        assert!(verify_hash(&f, "crc32:abcd").is_ok()); // 未知算法 → 跳过
         let _ = std::fs::remove_dir_all(&dir);
     }
 

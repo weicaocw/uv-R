@@ -7,7 +7,7 @@
 **Rust 语言、R 包管理、软件设计**。
 
 - 每一小步都遵循 TDD：失败的测试 → 最小实现 → 通过。
-- 每一小步都有一篇**自包含的简体中文教学课**：`docs/lessons/step-NN-*.md`（共 44 课）。
+- 每一小步都有一篇**自包含的简体中文教学课**：`docs/lessons/step-NN-*.md`（共 45 课）。
 - 课程地图与进度见 `docs/CURRICULUM.md`。
 - 提交与 PR 信息**中英双语**，便于事后翻历史复习。
 
@@ -18,7 +18,7 @@ documented as a self-contained Chinese lesson under `docs/lessons/`.
 > 📖 **用户手册（中英对照）/ User manual (bilingual)**：[`docs/MANUAL.md`](docs/MANUAL.md)
 > —— 面向使用的完整参考：命令、R 版本管理、缓存、项目布局、排错。
 
-## 现在能做什么（v0.12）/ What works now (v0.12)
+## 现在能做什么（v0.13）/ What works now (v0.13)
 
 **离线求解 + 锁定 / offline resolve & lock**
 ```sh
@@ -79,8 +79,8 @@ $ cargo run -- r which          # 看当前项目会用哪个 R / which R this p
 - ✅ **并行下载**：`install` / `sync` 并行预取 tarball，`--jobs <N>` 控制并发（v0.9，作用域线程 + 工作窃取）。
 - ✅ **lockfile v2 自包含**：锁文件记来源仓库，`uvr sync` 无需 `--repo`（v0.10，对标 `cargo build` / `npm ci`）。
 - ✅ **拓扑序安装**：依赖先于依赖者（v0.11，Kahn 算法、确定性）。
-- ✅ **完整性校验**：lockfile v3 记 sha256，下载后校验、防篡改（v0.12，对标 `cargo`/`pip --require-hashes`）。
-- ⏭ binary 包优先（免编译，本环境受限）· 并行安装（按拓扑层）· MD5 校验/签名验证。
+- ✅ **完整性校验**：lockfile v3 记 sha256/md5，下载后校验、防篡改（v0.12–v0.13，SHA256 + MD5 双覆盖；对标 `cargo`/`pip --require-hashes`）。
+- ⏭ binary 包优先（免编译，本环境受限）· 并行安装（按拓扑层）· 签名验证（真实性）。
 
 ## 怎么学 / How it's taught
 
