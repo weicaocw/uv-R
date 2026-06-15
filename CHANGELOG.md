@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.7.0 — R 版本管理 + 用户手册 / R version management + user manual
+
+**中文**
+- **R 版本管理（模块 M）**：对标 uv 的 `uv python` 家族。`uvr r list`（发现本机所有 R）、`uvr r which`（按 pin > 最高 解析当前会用的 R）、`uvr r pin [版本]`（写 `.R-version`，前缀匹配如 `4.5`→`4.5.2`）、`uvr r install <版本>`（不自己装，委托 rig 或给 CRAN 指引）。`uvr install` 现在用解析出的那个 R 跑 `R CMD INSTALL`，pin 了没装则报错中止。
+- **用户手册（模块 N）**：新增中英对照 `docs/MANUAL.md`（安装 / 命令参考 / R 版本管理 / 缓存模型 / 项目布局 / 排错 / 设计边界）；README 刷新到 v0.7。
+- **质量**：52 个单元测试（+3 `#[ignore]` 真·R/网络），fmt + clippy 全绿；安装仅进项目本地库（`-l`）。新增教学课 29–35。
+
+**English**
+- **R version management (Module M)**: the analogue of uv's `uv python` family. `uvr r list` (discover all R's), `uvr r which` (resolve the R to use by pin > highest), `uvr r pin [version]` (write `.R-version`, prefix match e.g. `4.5`→`4.5.2`), `uvr r install <version>` (no self-install; delegates to rig or points to CRAN). `uvr install` now runs `R CMD INSTALL` with the resolved R and aborts if a pinned R is missing.
+- **User manual (Module N)**: new bilingual `docs/MANUAL.md` (install / command reference / R version management / caching / layout / troubleshooting / design limits); README refreshed to v0.7.
+- **Quality**: 52 unit tests (+3 `#[ignore]` real-R/network), fmt + clippy clean; installs only into a project-local lib (`-l`). New lessons 29–35.
+
 ## v0.6.0 — 端到端 benchmark vs pak / End-to-end benchmark vs pak
 
 **中文**
