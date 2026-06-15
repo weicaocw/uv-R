@@ -29,6 +29,6 @@ lockfile、快速安装。沿途系统学习 **Rust、R 包管理、软件设计
 | 04 | 比较大小（`derive`） | TDD | ✅ 完成 |
 | 05 | 修正比较：`Eq`/`Ord` 一致性契约（结尾零陷阱） | TDD | ✅ 完成 |
 | 06 | 版本约束（`>=`、`<=`、`==` …） | TDD | ✅ 完成 |
-| 07 | CI（GitHub Actions）+ 讲解 | CI 绿 | ⬜ 待做 |
+| 07 | CI（GitHub Actions）+ 讲解 | CI 绿 | ✅ 完成 |
 
 完成后开 PR 合入 `main`，暂停等待 review。
