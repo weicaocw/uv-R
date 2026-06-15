@@ -132,6 +132,22 @@ pub enum RSelectError {
     PinnedNotFound(String),
 }
 
+impl std::fmt::Display for RSelectError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RSelectError::NoRInstalled => {
+                write!(f, "未发现任何 R / no R installation found")
+            }
+            RSelectError::PinnedNotFound(spec) => {
+                write!(
+                    f,
+                    "钉定的 R 版本 {spec} 未安装 / pinned R version {spec} is not installed"
+                )
+            }
+        }
+    }
+}
+
 /// 纯函数：按优先级选出该用的那个 R。
 ///
 /// 规则：有 pin → 在已装里挑**匹配且最高**的；无 pin → 挑**最高版本**。
@@ -333,5 +349,12 @@ mod tests {
 
     fn ver(s: &str) -> Version {
         Version::parse(s).unwrap()
+    }
+
+    #[test]
+    fn select_error_displays_bilingually() {
+        assert!(RSelectError::NoRInstalled.to_string().contains("no R"));
+        let e = RSelectError::PinnedNotFound("3.6".to_string());
+        assert!(e.to_string().contains("3.6"));
     }
 }
