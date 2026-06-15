@@ -85,11 +85,14 @@ pub struct Package {
     pub depends: Vec<Dependency>,
     /// 这个包来自哪个仓库基址（用于下载 tarball）。本地 / 未知时为空串。
     pub repo: String,
+    /// 校验和，带算法前缀，如 `sha256:abcd…` 或 `md5:abcd…`；仓库未提供则为空串。
+    pub hash: String,
 }
 
 impl Package {
     /// 从一条 DCF 记录构造一个包；缺少 `Package` / `Version` 则返回 None。
     /// 依赖来自 `Depends` / `Imports` / `LinkingTo` 三个字段的合并。
+    /// 校验和优先取 `SHA256`（r-universe / PPM 提供），回退 `MD5sum`（CRAN 提供）。
     fn from_record(rec: &Record, repo: &str) -> Option<Package> {
         let name = rec.get("Package")?.clone();
         let version = Version::parse(rec.get("Version")?)?;
@@ -99,11 +102,17 @@ impl Package {
                 depends.extend(parse_dependencies(value));
             }
         }
+        let hash = rec
+            .get("SHA256")
+            .map(|h| format!("sha256:{h}"))
+            .or_else(|| rec.get("MD5sum").map(|h| format!("md5:{h}")))
+            .unwrap_or_default();
         Some(Package {
             name,
             version,
             depends,
             repo: repo.to_string(),
+            hash,
         })
     }
 }
@@ -231,5 +240,25 @@ Imports: DT (>= 0.4), networkD3 (>= 0.4),
         assert_eq!(aasea.depends.len(), 3);
 
         assert!(idx.versions_of("nonexistent").is_empty());
+    }
+
+    #[test]
+    fn extracts_hash_sha256_preferred_then_md5() {
+        let pkgs = "\
+Package: withsha
+Version: 1.0
+SHA256: deadbeef
+
+Package: withmd5
+Version: 1.0
+MD5sum: cafebabe
+
+Package: nohash
+Version: 1.0
+";
+        let idx = PackageIndex::from_packages_file(pkgs);
+        assert_eq!(idx.versions_of("withsha")[0].hash, "sha256:deadbeef");
+        assert_eq!(idx.versions_of("withmd5")[0].hash, "md5:cafebabe");
+        assert_eq!(idx.versions_of("nohash")[0].hash, ""); // 没提供则为空
     }
 }
