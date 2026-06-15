@@ -46,3 +46,19 @@ echo "|---|---|"
 echo "| uvr (原生 release / native) | $UVR_MS |"
 echo "| pak (在 R 里 / in R) | $PAK_MS |"
 echo "| 仅 R 启动 (Rscript -e 1) | $R_MS |"
+
+# —— 冷抓 vs 暖缓存（uvr lock --repo，元数据缓存）——
+once_ms() {
+  MSFILE=/tmp/uvr_once perl -MTime::HiRes=time -e \
+    'open(my $f, ">", $ENV{MSFILE}); my $s = time; system(@ARGV); printf $f "%.1f", (time - $s) * 1000;' \
+    -- "$@" >/dev/null 2>&1
+  cat /tmp/uvr_once
+}
+rm -rf .uvr-cache
+COLD=$(once_ms "$UVR" lock --repo "$REPO" "$PKG") # 冷：清空缓存后单次（含联网）
+WARM=$(min_ms "$UVR" lock --repo "$REPO" "$PKG")  # 暖：之后多次取最小（命中缓存）
+echo
+echo "| uvr lock --repo（元数据） | min ms |"
+echo "|---|---|"
+echo "| cold（无缓存·联网抓） | $COLD |"
+echo "| warm（暖缓存·免联网） | $WARM |"

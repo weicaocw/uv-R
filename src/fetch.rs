@@ -2,7 +2,9 @@
 //!
 //! 把"构造 URL"（纯函数、可测）与"实际联网"（IO、不在 CI 跑）分开。
 
+use crate::cache;
 use std::fmt;
+use std::path::Path;
 
 /// 抓取失败的原因。把底层错误包成一条消息，不让 `ureq` 的类型泄漏进我们的 API。
 #[derive(Debug)]
@@ -26,6 +28,16 @@ pub fn get_text(url: &str) -> Result<String, FetchError> {
         .map_err(|e| FetchError(e.to_string()))?
         .into_string()
         .map_err(|e| FetchError(e.to_string()))
+}
+
+/// 带缓存的抓取：先查缓存目录，命中直接用；未命中再联网抓并写回缓存（暖缓存）。
+pub fn get_text_cached(url: &str, cache_dir: &Path) -> Result<String, FetchError> {
+    if let Some(cached) = cache::read(cache_dir, url) {
+        return Ok(cached);
+    }
+    let text = get_text(url)?;
+    cache::write(cache_dir, url, &text);
+    Ok(text)
 }
 
 #[cfg(test)]
