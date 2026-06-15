@@ -4,7 +4,7 @@
 
 use std::cmp::Ordering;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Version {
     parts: Vec<u64>,
 }
@@ -65,7 +65,7 @@ enum Op {
 }
 
 /// 版本约束，如 ">= 1.2.0"。
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Constraint {
     op: Op,
     version: Version,
