@@ -81,6 +81,37 @@ pub fn discover() -> Vec<RInstall> {
     dedup_installs(installs)
 }
 
+/// 项目级钉版本文件名，对标 uv 的 `.python-version`。
+pub const PIN_FILE: &str = ".R-version";
+
+/// 某目录下钉版本文件的完整路径。
+pub fn pin_path(dir: &Path) -> PathBuf {
+    dir.join(PIN_FILE)
+}
+
+/// 纯函数：渲染 `.R-version` 内容（版本规格 + 换行）。
+pub fn render_pin(spec: &str) -> String {
+    format!("{}\n", spec.trim())
+}
+
+/// 纯函数：解析 `.R-version`——取第一行非空、非注释（`#`）的内容并 trim。
+pub fn parse_pin(text: &str) -> Option<String> {
+    text.lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(str::to_string)
+}
+
+/// 读 `dir/.R-version`；不存在 / 全是空行注释则 `None`。
+pub fn read_pin(dir: &Path) -> Option<String> {
+    parse_pin(&std::fs::read_to_string(pin_path(dir)).ok()?)
+}
+
+/// 把版本规格写进 `dir/.R-version`。
+pub fn write_pin(dir: &Path, spec: &str) -> std::io::Result<()> {
+    std::fs::write(pin_path(dir), render_pin(spec))
+}
+
 /// 从 `R --version` 的输出里解析出版本号。
 ///
 /// 典型首行：`R version 4.5.2 (2025-10-31) -- "..."`。
@@ -177,5 +208,33 @@ mod tests {
     fn discovers_at_least_one_r() {
         let found = discover();
         assert!(!found.is_empty(), "应至少发现一个 R");
+    }
+
+    #[test]
+    fn pin_render_parse_round_trip() {
+        assert_eq!(parse_pin(&render_pin("4.5.2")), Some("4.5.2".to_string()));
+    }
+
+    #[test]
+    fn pin_skips_comments_and_blanks() {
+        assert_eq!(
+            parse_pin("# 注释\n\n  4.4.0  \n"),
+            Some("4.4.0".to_string())
+        );
+    }
+
+    #[test]
+    fn pin_none_when_only_comments() {
+        assert_eq!(parse_pin("# 只有注释\n\n"), None);
+    }
+
+    #[test]
+    fn pin_round_trips_on_disk() {
+        let dir = PathBuf::from("target/test-rversion-pin");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        write_pin(&dir, "4.5.2").unwrap();
+        assert_eq!(read_pin(&dir), Some("4.5.2".to_string()));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
