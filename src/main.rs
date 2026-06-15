@@ -5,9 +5,9 @@
 //!   uvr lock    --repo <仓库> [--repo <仓库2> ...] <根包>...
 //!   uvr install --repo <仓库> [--repo <仓库2> ...] [--lib <目录>] <根包>...
 //!
-//! 支持多仓库：抓取并合并多个仓库的 PACKAGES 后再求解 / 安装。
+//! 多仓库：抓取并合并多个仓库后求解 / 安装。元数据与 tarball 都走 `.uvr-cache/` 暖缓存。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -25,6 +25,11 @@ fn usage() -> ExitCode {
     eprintln!("  uvr lock    --repo <url> [--repo <url2> ...] <root-package>...");
     eprintln!("  uvr install --repo <url> [--repo <url2> ...] [--lib <dir>] <root-package>...");
     ExitCode::FAILURE
+}
+
+/// 元数据缓存目录（暖缓存）。
+fn meta_cache_dir() -> PathBuf {
+    PathBuf::from(".uvr-cache/meta")
 }
 
 /// 解析 `--repo`（可多个）、`--lib`，其余作为根包名。
@@ -52,12 +57,13 @@ fn parse_flags(rest: &[String]) -> (Vec<String>, PathBuf, Vec<String>) {
     (repos, lib, roots)
 }
 
-/// 抓取每个仓库的 PACKAGES，组成 (文本, 仓库) 源列表。
-fn fetch_sources(repos: &[String]) -> Result<Vec<(String, String)>, String> {
+/// 抓取每个仓库的 PACKAGES（走缓存），组成 (文本, 仓库) 源列表。
+fn fetch_sources(repos: &[String], cache_dir: &Path) -> Result<Vec<(String, String)>, String> {
     let mut sources = Vec::new();
     for repo in repos {
         let url = uvr::fetch::packages_url(repo);
-        let text = uvr::fetch::get_text(&url).map_err(|e| format!("{repo}: {e}"))?;
+        let text =
+            uvr::fetch::get_text_cached(&url, cache_dir).map_err(|e| format!("{repo}: {e}"))?;
         sources.push((text, repo.clone()));
     }
     Ok(sources)
@@ -79,7 +85,7 @@ fn finish_lock(sources: &[(String, String)], roots: &[String]) -> ExitCode {
 fn lock(rest: &[String]) -> ExitCode {
     if rest.iter().any(|a| a == "--repo") {
         let (repos, _lib, roots) = parse_flags(rest);
-        match fetch_sources(&repos) {
+        match fetch_sources(&repos, &meta_cache_dir()) {
             Ok(sources) => finish_lock(&sources, &roots),
             Err(e) => {
                 eprintln!("抓取失败 / fetch failed: {e}");
@@ -110,14 +116,14 @@ fn install(rest: &[String]) -> ExitCode {
         eprintln!("install 需要至少一个包名 / install needs at least one package");
         return ExitCode::FAILURE;
     }
-    let sources = match fetch_sources(&repos) {
+    let sources = match fetch_sources(&repos, &meta_cache_dir()) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("抓取失败 / fetch failed: {e}");
             return ExitCode::FAILURE;
         }
     };
-    let download_dir = PathBuf::from("target/uvr-cache");
+    let download_dir = PathBuf::from(".uvr-cache/tarballs");
     match uvr::commands::install_packages(&sources, &roots, &lib, &download_dir) {
         Ok(installed) => {
             for p in &installed {

@@ -18,6 +18,9 @@ pub fn tarball_url(repo_base: &str, name: &str, version: &str) -> String {
 
 /// 下载 URL 到本地文件（二进制流式写入，省内存）。
 pub fn download(url: &str, dest: &Path) -> Result<(), String> {
+    if dest.exists() {
+        return Ok(()); // 已缓存的 tarball，跳过下载
+    }
     let resp = ureq::get(url).call().map_err(|e| e.to_string())?;
     let mut reader = resp.into_reader();
     let mut file = std::fs::File::create(dest).map_err(|e| e.to_string())?;
