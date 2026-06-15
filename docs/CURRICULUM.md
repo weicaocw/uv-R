@@ -11,24 +11,21 @@
 |---|---|---|---|
 | A | 版本模型 | 解析、比较、约束 | ✅ 完成（PR #1） |
 | B | 元数据 | DCF 解析、依赖字段、依赖图 | ✅ 完成（PR #2） |
-| C | 联网 + 缓存 | HTTP 抓取 PACKAGES、缓存 | ⏸ 资源墙（需实时网络 / 外部 crate） |
 | D | 依赖求解 | 选版本、传递依赖、冲突、lockfile | ✅ 完成（PR #3，手写教学版） |
-| E | 下载 + 安装 | binary 解压 / `R CMD INSTALL` | ⏸ 资源墙（需网络 / R） |
 | F | 命令行 | `uvr lock`（纯 std 最小实现） | ✅ 完成 → **v0.1** |
-| G | Benchmark + 报告 | 对 pak 的对照实验 | ⏸ 资源墙（需 R / pak / hyperfine） |
+| **C** | **联网 + 缓存** ← 当前 | HTTP 抓取 PACKAGES | 进行中（网络已验证可用） |
+| E | 下载 + 安装 | 下载 tarball / `R CMD INSTALL`（项目本地库） | ⬜ 计划 |
+| G | Benchmark + 报告 | 对 pak 的对照实验（自写计时，不用 hyperfine） | ⬜ 计划 |
 
-> **v0.1（可发布成品）**：模块 A + B + D + F = 一个**离线依赖求解器**——
-> `uvr lock <PACKAGES 文件> <根包>...` 读取仓库索引、解出传递依赖、写出 lockfile，全程离线、全测试覆盖、CI 绿。
-> 需实时网络 / R / 系统安装的模块（C、E、G）留作资源墙，待具备条件再做。
+> 进度顺序：先做完离线核心（A·B·D·F = v0.1），再回头补联网（C）、安装（E）、benchmark（G）。
+> 实测：cargo 能联网拉 crate、运行时能抓真实 `PACKAGES`，故 C/E/G 在本环境可行。
+> 底线：E 安装到**项目本地 R 库**（不污染全局 R 环境）；G **自写计时脚本**（绕开需 brew 的 hyperfine）。
 
 ## 各模块小步索引（详见 docs/lessons/）
-- **模块 A：版本模型** ✅ — 01 骨架 · 02 Version 结构体 · 03 解析 · 04 比较(derive) · 05 修正比较(Eq/Ord 契约) · 06 版本约束 · 07 CI。
-- **模块 B：元数据** ✅ — 08 拆库 + 模块系统 · 09 DCF 解析 · 10 依赖字段解析 · 11 包索引 / 依赖图。
-- **模块 D：依赖求解** ✅（手写教学版，非 pubgrub）— 12 best_match(生命周期) · 13 传递依赖(工作队列) · 14 冲突检测(Result/错误枚举) · 15 lockfile(Display + 往返)。
-- **模块 F：命令行** ✅ — 16 `uvr lock`（env::args + 纯函数核心 + ExitCode）。
-
-## 资源墙（交还给用户处理）
-- **C 联网**：抓 CRAN/PPM 的 `PACKAGES` 需实时网络；引入 `reqwest`/`ureq` 需 cargo 联网拉 crate。
-- **E 安装**：解压 binary 包 / 调 `R CMD INSTALL` 需 R 与系统工具链。
-- **G Benchmark**：对 `pak` 跑对照需 R + pak + `hyperfine`（需 `brew install`）。
-- **D 升级**：把教学版求解器换成 `pubgrub`（需 cargo 联网拉 crate）。
+- **A 版本模型** ✅ — 01 骨架 · 02 Version · 03 解析 · 04 比较(derive) · 05 修正(Eq/Ord 契约) · 06 约束 · 07 CI。
+- **B 元数据** ✅ — 08 拆库+模块 · 09 DCF 解析 · 10 依赖字段 · 11 包索引/依赖图。
+- **D 依赖求解** ✅（手写教学版）— 12 best_match(生命周期) · 13 传递依赖(工作队列) · 14 冲突检测(Result/枚举) · 15 lockfile(Display/往返)。
+- **F 命令行** ✅ — 16 `uvr lock`（env::args + ExitCode）。
+- **C 联网** ← 当前 — 17 ureq 抓取层（`fetch`，URL 构造 + HTTP GET）· 18 跳过 base 包 + `uvr lock --repo <url>` 联网求解。
+- **E 下载+安装**（计划）— 下载 tarball、解压/`R CMD INSTALL` 到项目本地库。
+- **G Benchmark**（计划）— 自写计时，对 `pak` 跑对照，出报告。
