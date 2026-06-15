@@ -11,6 +11,26 @@ use crate::version::Version;
 use std::collections::BTreeMap;
 use std::path::Path;
 
+/// 按计划逐个下载 tarball 并用 `r_bin` 安装到 `lib_dir`；返回安装清单。
+///
+/// `install`（求解后）与 `sync`（按 lockfile）共用这段下载 + 安装循环。
+fn run_plan(
+    plan: &[InstallItem],
+    lib_dir: &Path,
+    download_dir: &Path,
+    r_bin: &Path,
+) -> Result<Vec<String>, String> {
+    std::fs::create_dir_all(download_dir).map_err(|e| e.to_string())?;
+    let mut installed = Vec::new();
+    for item in plan {
+        let tarball = download_dir.join(format!("{}_{}.tar.gz", item.name, item.version));
+        install::download(&item.url, &tarball)?;
+        install::install_tarball(&tarball, lib_dir, r_bin)?;
+        installed.push(format!("{} {}", item.name, item.version));
+    }
+    Ok(installed)
+}
+
 /// 一个元数据来源：(PACKAGES 文本, 仓库基址)。
 pub type Source = (String, String);
 
@@ -89,15 +109,53 @@ pub fn install_packages(
     r_bin: &Path,
 ) -> Result<Vec<String>, String> {
     let plan = install_plan(sources, roots).map_err(|e| format!("{e:?}"))?;
-    std::fs::create_dir_all(download_dir).map_err(|e| e.to_string())?;
-    let mut installed = Vec::new();
-    for item in &plan {
-        let tarball = download_dir.join(format!("{}_{}.tar.gz", item.name, item.version));
-        install::download(&item.url, &tarball)?;
-        install::install_tarball(&tarball, lib_dir, r_bin)?;
-        installed.push(format!("{} {}", item.name, item.version));
-    }
-    Ok(installed)
+    run_plan(&plan, lib_dir, download_dir, r_bin)
+}
+
+/// 纯函数：按 lockfile（已锁定的 `name → version`）在仓库索引里定位每个包、拼下载计划。
+///
+/// 与 `install_plan` 的关键区别：**不求解**。它严格安装 lockfile 里写死的版本，
+/// 即使仓库里已有更高版本——这正是 `sync` 的意义：可复现，杜绝"求解漂移"。
+/// 锁定的版本在索引里找不到（仓库变了 / 包没了）则报错并指名是哪个包。
+pub fn sync_plan(
+    locked: &BTreeMap<String, Version>,
+    sources: &[Source],
+) -> Result<Vec<InstallItem>, String> {
+    let index = build_index(sources);
+    locked
+        .iter()
+        .map(|(name, version)| {
+            let found = index
+                .versions_of(name)
+                .iter()
+                .find(|p| p.version == *version)
+                .ok_or_else(|| {
+                    format!(
+                        "锁定的 {name} {version} 在仓库里找不到 / locked {name} {version} not found in repos"
+                    )
+                })?;
+            let url = install::tarball_url(&found.repo, name, &version.to_string());
+            Ok(InstallItem {
+                name: name.clone(),
+                version: version.to_string(),
+                url,
+            })
+        })
+        .collect()
+}
+
+/// 读 lockfile 文本，按其中锁定的版本下载并安装到 `lib_dir`（不求解）。
+pub fn sync_from_lock(
+    lockfile_text: &str,
+    sources: &[Source],
+    lib_dir: &Path,
+    download_dir: &Path,
+    r_bin: &Path,
+) -> Result<Vec<String>, String> {
+    let locked =
+        lockfile::parse(lockfile_text).ok_or("lockfile 解析失败 / cannot parse lockfile")?;
+    let plan = sync_plan(&locked, sources)?;
+    run_plan(&plan, lib_dir, download_dir, r_bin)
 }
 
 #[cfg(test)]
@@ -142,6 +200,39 @@ Depends: R (>= 3.0.0), pkgA (>= 1.1.0)
             pkgb.url,
             "https://repo.example/src/contrib/pkgB_2.0.0.tar.gz"
         );
+    }
+
+    #[test]
+    fn sync_plan_installs_exact_locked_version_no_drift() {
+        // 索引里有 pkgA 1.0.0 和 1.2.0；锁定 1.0.0 → 计划必须用 1.0.0（不漂到 1.2.0）。
+        let mut locked = BTreeMap::new();
+        locked.insert("pkgA".to_string(), Version::parse("1.0.0").unwrap());
+        let plan = sync_plan(&locked, &one_source("https://repo.example")).unwrap();
+        let a = plan.iter().find(|i| i.name == "pkgA").unwrap();
+        assert_eq!(a.version, "1.0.0");
+        assert_eq!(a.url, "https://repo.example/src/contrib/pkgA_1.0.0.tar.gz");
+    }
+
+    #[test]
+    fn sync_plan_errors_on_unknown_locked_version() {
+        let mut locked = BTreeMap::new();
+        locked.insert("pkgA".to_string(), Version::parse("9.9.9").unwrap());
+        let err = sync_plan(&locked, &one_source("https://repo.example")).unwrap_err();
+        assert!(err.contains("pkgA")); // 报错指名是哪个包
+    }
+
+    #[test]
+    fn sync_from_lock_rejects_bad_lockfile() {
+        let bad = "not a valid lockfile line";
+        let err = sync_from_lock(
+            bad,
+            &one_source("https://r"),
+            Path::new("x"),
+            Path::new("y"),
+            Path::new("R"),
+        )
+        .unwrap_err();
+        assert!(err.contains("lockfile"));
     }
 
     #[test]
