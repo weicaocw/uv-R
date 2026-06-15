@@ -7,19 +7,17 @@
 **Rust 语言、R 包管理、软件设计**。
 
 - 每一小步都遵循 TDD：失败的测试 → 最小实现 → 通过。
-- 每一小步都有一篇**自包含的简体中文教学课**：`docs/lessons/step-NN-*.md`。
+- 每一小步都有一篇**自包含的简体中文教学课**：`docs/lessons/step-NN-*.md`（共 21 课）。
 - 课程地图与进度见 `docs/CURRICULUM.md`。
 - 提交与 PR 信息**中英双语**，便于事后翻历史复习。
 
 This repository is a hands-on tutorial: learn Rust, R package management, and software design
 by building `uvr`, a uv/Cargo-style package manager for R. Every tiny step is test-driven and
-documented as a self-contained Chinese lesson under `docs/lessons/`. See `docs/CURRICULUM.md`
-for the roadmap.
+documented as a self-contained Chinese lesson under `docs/lessons/`.
 
-## 现在能做什么（v0.1）/ What works now (v0.1)
+## 现在能做什么（v0.2）/ What works now (v0.2)
 
-v0.1 是一个**离线依赖求解器**：从一个 R 仓库的 `PACKAGES` 文件，解出某些包的全部传递依赖，并写出 lockfile。
-
+**离线求解 + 锁定 / offline resolve & lock**
 ```sh
 $ cargo run -- lock testdata/PACKAGES pkgC
 # uvr lockfile v1
@@ -28,19 +26,31 @@ pkgB 2.0.0
 pkgC 0.5.0
 ```
 
-已实现：版本模型（解析 / 比较 / 约束）· 元数据（DCF 解析 / 依赖图）· 依赖求解（传递依赖 / 冲突检测 / lockfile）· 最小 CLI。22 个单元测试 + CI（fmt / clippy / build / test）。
+**联网求解（从真实仓库）/ resolve live from a real repo**
+```sh
+$ cargo run -- lock --repo https://jeroen.r-universe.dev jsonlite
+# uvr lockfile v1
+jsonlite 2.0.1
+```
 
-v0.1 is an **offline dependency resolver**: from a repository `PACKAGES` file it resolves a
-package's full transitive dependencies and writes a lockfile (see the command above).
+**安装到项目本地库（不碰全局 R）/ install into a project-local lib**
+```sh
+$ cargo run -- install --repo https://gaborcsardi.r-universe.dev dotenv --lib ./r-lib
+installed dotenv 1.0.3.9000
+→ 已安装到项目本地库 / installed into project-local lib: ./r-lib
+```
 
-## 路线图与资源墙 / Roadmap & resource walls
+**对 pak 的诚实 benchmark / honest benchmark vs pak**：见 [`BENCHMARK.md`](BENCHMARK.md)
+（一次性解析：uvr ~5 ms vs pak ~5.2 s；安装这类重活诚实报"打平"）。
 
-后续模块需要本机当前不具备的资源（详见 `docs/CURRICULUM.md`）：
+七章全部完成：版本模型 · 元数据(DCF/依赖图) · 联网 · 依赖求解(传递/冲突/lockfile) · 下载安装 · CLI · benchmark。
+26 个单元测试 + CI（fmt / clippy / build / test）。
 
-- **C 联网**：抓取 CRAN / Posit Package Manager 的 `PACKAGES`（需实时网络 / 外部 crate）。
-- **E 安装**：下载并安装 R 包（需 R 与系统工具链 / `R CMD INSTALL`）。
-- **G Benchmark**：对 `pak` 跑对照实验（需 R、`pak`、`hyperfine`）。
-- **D 升级**：把手写教学求解器换成工业级 `pubgrub`（需 cargo 联网拉 crate）。
+## 路线图 / Roadmap (v0.3+)
+
+- 把手写教学求解器升级为工业级 [`pubgrub`](https://github.com/pubgrub-rs/pubgrub)（带回溯）。
+- 合并多仓库索引（解决跨仓库依赖 `NotFound`）。
+- 元数据 / 下载缓存；binary 包优先；并行下载安装。
 
 ## 怎么学 / How it's taught
 
@@ -51,6 +61,9 @@ R 包管理知识、软件设计理念、改了哪些文件、过了哪些测试
 ## 构建与测试 / Build & test
 
 ```sh
-cargo test                                  # 跑全部测试 / run all tests
-cargo run -- lock <PACKAGES-file> <pkg>...  # 求解并输出 lockfile / resolve & print a lockfile
+cargo test                                          # 跑全部测试 / run all tests
+cargo run -- lock    <PACKAGES-file> <pkg>...        # 离线求解 / resolve offline
+cargo run -- lock    --repo <repo-url> <pkg>...      # 联网求解 / resolve live
+cargo run -- install --repo <repo-url> [--lib <dir>] <pkg>...  # 安装到本地库 / install locally
+bash scripts/bench.sh                               # 对 pak 跑 benchmark / benchmark vs pak
 ```

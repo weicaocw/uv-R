@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.2.0 — 联网、安装、benchmark / Networking, install, benchmark
+
+**中文**
+- **联网（模块 C）**：用 ureq 从真实 R 仓库抓 `PACKAGES`；`uvr lock --repo <url> <包>` 联网求解；跳过随 R 自带的 base/recommended 包。
+- **下载 + 安装（模块 E）**：`uvr install --repo <url> [--lib <目录>] <包>...` 下载源码 tarball 并用 `R CMD INSTALL` 装进**项目本地库**（`-l` 隔离，不碰全局 R）。
+- **Benchmark（模块 G）**：自写计时脚本 `scripts/bench.sh` + 诚实报告 `BENCHMARK.md`——一次性解析 uvr ~5 ms vs pak ~5.2 s（结构性优势：无 R 启动 / 无每进程重载元数据）；安装诚实报"打平"。
+- **质量**：26 个单元测试（外加联网 / 安装的 `#[ignore]` 测试，手动跑）；CI 全绿。
+- 新增教学课 17–21；课程七章全部完成。
+
+**English**
+- **Networking (Module C)**: fetch `PACKAGES` from real R repositories via ureq; `uvr lock --repo <url> <pkg>`; skip R's bundled base/recommended packages.
+- **Download + install (Module E)**: `uvr install --repo <url> [--lib <dir>] <pkg>...` downloads source tarballs and `R CMD INSTALL`s them into a **project-local library** (isolated via `-l`, never the global R).
+- **Benchmark (Module G)**: self-written `scripts/bench.sh` + an honest `BENCHMARK.md` — one-shot resolve uvr ~5 ms vs pak ~5.2 s (structural edge); installs are honestly a tie.
+- **Quality**: 26 unit tests (+ `#[ignore]` network/install tests, run manually); CI green.
+- New lessons 17–21; all seven chapters complete.
+
 ## v0.1.0 — 离线依赖求解器 / Offline dependency resolver
 
 **中文**
