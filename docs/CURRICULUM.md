@@ -23,7 +23,7 @@ lockfile、快速安装。沿途系统学习 **Rust、R 包管理、软件设计
 
 | 步 | 目标 | 测试方式 | 状态 |
 |---|---|---|---|
-| 01 | 项目骨架（cargo + hello world） | 运行演示 | ⬜ 待做 |
+| 01 | 项目骨架（cargo + hello world） | 运行演示 | ✅ 完成 |
 | 02 | `Version` 结构体（struct + `Vec`） | 运行演示 | ⬜ 待做 |
 | 03 | 解析字符串 → `Version`（`Option`） | TDD | ⬜ 待做 |
 | 04 | 比较大小（`derive`） | TDD | ⬜ 待做 |
