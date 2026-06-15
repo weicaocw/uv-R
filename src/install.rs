@@ -28,12 +28,13 @@ pub fn download(url: &str, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// 用 `R CMD INSTALL -l <lib_dir>` 把 tarball 装进**指定的项目本地库**。
+/// 用 `<r_bin> CMD INSTALL -l <lib_dir>` 把 tarball 装进**指定的项目本地库**。
 ///
 /// `-l <lib_dir>` 把安装目标限定在我们给的目录，因此不会污染系统 / 用户级 R 库。
-pub fn install_tarball(tarball: &Path, lib_dir: &Path) -> Result<(), String> {
+/// `r_bin` 是要用的 R 可执行文件（由 `rversion::resolve_r` 选出，对标"用钉定的解释器装包"）。
+pub fn install_tarball(tarball: &Path, lib_dir: &Path, r_bin: &Path) -> Result<(), String> {
     std::fs::create_dir_all(lib_dir).map_err(|e| e.to_string())?;
-    let status = Command::new("R")
+    let status = Command::new(r_bin)
         .arg("CMD")
         .arg("INSTALL")
         .arg("-l")
@@ -69,7 +70,7 @@ mod tests {
         let tarball = std::path::PathBuf::from("target/praise_1.0.0.tar.gz");
         let url = tarball_url("https://cran.r-project.org", "praise", "1.0.0");
         download(&url, &tarball).unwrap();
-        install_tarball(&tarball, &lib).unwrap();
+        install_tarball(&tarball, &lib, std::path::Path::new("R")).unwrap();
         // 装好后，本地库里应出现 praise/DESCRIPTION
         assert!(lib.join("praise").join("DESCRIPTION").exists());
     }

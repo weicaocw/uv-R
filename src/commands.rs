@@ -79,11 +79,14 @@ pub fn install_plan(
 }
 
 /// 按计划下载并安装到**项目本地库** `lib_dir`；tarball 暂存到 `download_dir`。
+///
+/// `r_bin` 是用来跑 `R CMD INSTALL` 的 R 可执行文件（由 `rversion::resolve_r` 选出）。
 pub fn install_packages(
     sources: &[Source],
     roots: &[String],
     lib_dir: &Path,
     download_dir: &Path,
+    r_bin: &Path,
 ) -> Result<Vec<String>, String> {
     let plan = install_plan(sources, roots).map_err(|e| format!("{e:?}"))?;
     std::fs::create_dir_all(download_dir).map_err(|e| e.to_string())?;
@@ -91,7 +94,7 @@ pub fn install_packages(
     for item in &plan {
         let tarball = download_dir.join(format!("{}_{}.tar.gz", item.name, item.version));
         install::download(&item.url, &tarball)?;
-        install::install_tarball(&tarball, lib_dir)?;
+        install::install_tarball(&tarball, lib_dir, r_bin)?;
         installed.push(format!("{} {}", item.name, item.version));
     }
     Ok(installed)

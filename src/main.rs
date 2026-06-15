@@ -4,8 +4,10 @@
 //!   uvr lock    <PACKAGES 文件> <根包>...
 //!   uvr lock    --repo <仓库> [--repo <仓库2> ...] <根包>...
 //!   uvr install --repo <仓库> [--repo <仓库2> ...] [--lib <目录>] <根包>...
+//!   uvr r list | which | pin [<版本>]
 //!
 //! 多仓库：抓取并合并多个仓库后求解 / 安装。元数据与 tarball 都走 `.uvr-cache/` 暖缓存。
+//! `uvr r ...`：管理本机 R 版本（发现 / 选择 / 项目级钉版本）。
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -15,6 +17,7 @@ fn main() -> ExitCode {
     match args.get(1).map(String::as_str) {
         Some("lock") => lock(&args[2..]),
         Some("install") => install(&args[2..]),
+        Some("r") => r_command(&args[2..]),
         _ => usage(),
     }
 }
@@ -24,7 +27,91 @@ fn usage() -> ExitCode {
     eprintln!("  uvr lock    <PACKAGES-file> <root-package>...");
     eprintln!("  uvr lock    --repo <url> [--repo <url2> ...] <root-package>...");
     eprintln!("  uvr install --repo <url> [--repo <url2> ...] [--lib <dir>] <root-package>...");
+    eprintln!(
+        "  uvr r list | which | pin [<version>] | install <version>   # 管理 R 版本 / manage R versions"
+    );
     ExitCode::FAILURE
+}
+
+/// `uvr r <子命令>`：管理本机 R 版本。
+fn r_command(rest: &[String]) -> ExitCode {
+    match rest.first().map(String::as_str) {
+        Some("list") => r_list(),
+        Some("which") => r_which(),
+        Some("pin") => r_pin(&rest[1..]),
+        Some("install") => r_install(&rest[1..]),
+        _ => {
+            eprintln!("用法 / usage: uvr r list | which | pin [<version>] | install <version>");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `uvr r install <版本>`：uvr 不做系统级安装，委托 `rig` 或给出清晰指引（资源墙交接）。
+fn r_install(args: &[String]) -> ExitCode {
+    let Some(spec) = args.first() else {
+        eprintln!("用法 / usage: uvr r install <version>");
+        return ExitCode::FAILURE;
+    };
+    let present = uvr::rversion::rig_available();
+    println!("{}", uvr::rversion::rig_install_hint(spec, present));
+    // 没有实际安装，返回失败让脚本能据此判断（诚实：这一步把活交还给了你 / rig）。
+    ExitCode::FAILURE
+}
+
+/// `uvr r list`：列出发现到的所有 R，并用 `*` 标出当前会选中的那个。
+fn r_list() -> ExitCode {
+    let installs = uvr::rversion::discover();
+    if installs.is_empty() {
+        eprintln!("未发现任何 R / no R found");
+        return ExitCode::FAILURE;
+    }
+    let selected = uvr::rversion::resolve_r(Path::new(".")).ok();
+    for i in &installs {
+        let here = selected.as_ref().is_some_and(|s| s.version == i.version);
+        let mark = if here { "*" } else { " " };
+        println!("{mark} {} {}", i.version, i.path.display());
+    }
+    ExitCode::SUCCESS
+}
+
+/// `uvr r which`：打印当前项目会用的那个 R（按 pin > 最高 解析）。
+fn r_which() -> ExitCode {
+    match uvr::rversion::resolve_r(Path::new(".")) {
+        Ok(r) => {
+            println!("{} {}", r.version, r.path.display());
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `uvr r pin [<版本>]`：把版本写进 `./.R-version`；省略版本时钉当前解析到的 R。
+fn r_pin(args: &[String]) -> ExitCode {
+    let dir = Path::new(".");
+    let spec = match args.first() {
+        Some(s) => s.clone(),
+        None => match uvr::rversion::resolve_r(dir) {
+            Ok(r) => r.version.to_string(),
+            Err(e) => {
+                eprintln!("{e}");
+                return ExitCode::FAILURE;
+            }
+        },
+    };
+    match uvr::rversion::write_pin(dir, &spec) {
+        Ok(()) => {
+            println!("已钉定 / pinned R {spec} → {}", uvr::rversion::PIN_FILE);
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("写入失败 / write failed: {e}");
+            ExitCode::FAILURE
+        }
+    }
 }
 
 /// 元数据缓存目录（暖缓存）。
@@ -123,8 +210,19 @@ fn install(rest: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    // 用按 pin > 最高 解析出的那个 R 来跑 R CMD INSTALL；钉了却没装就明确报错、不偷偷换 R。
+    let r_bin = match uvr::rversion::resolve_r(Path::new(".")) {
+        Ok(r) => {
+            eprintln!("→ 使用 R / using R {}: {}", r.version, r.path.display());
+            r.path
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
     let download_dir = PathBuf::from(".uvr-cache/tarballs");
-    match uvr::commands::install_packages(&sources, &roots, &lib, &download_dir) {
+    match uvr::commands::install_packages(&sources, &roots, &lib, &download_dir, &r_bin) {
         Ok(installed) => {
             for p in &installed {
                 println!("installed {p}");
