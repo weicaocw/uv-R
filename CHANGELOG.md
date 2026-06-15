@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.6.0 — 端到端 benchmark vs pak / End-to-end benchmark vs pak
+
+**中文**
+- **端到端 benchmark（模块 L）**：uvr 与 pak 的多轴公平对照——解析 6ms vs 5415ms；暖缓存 lock 6ms；端到端装 dotenv uvr 暖 1575ms vs pak 5478ms（uvr 冷也胜 pak 暖 ~2.6×）。`R CMD INSTALL` 是共享地板（打平）；含编译大包待 binary 支持。
+- `BENCHMARK.md` 重写为多轴诚实报告；`scripts/bench.sh` 加端到端安装段。新增教学课 28。
+
+**English**
+- **End-to-end benchmark (Module L)**: a fair, multi-axis comparison vs pak — resolve 6ms vs 5415ms; warm-cache lock 6ms; end-to-end install dotenv uvr warm 1575ms vs pak warm 5478ms (uvr cold beats pak warm ~2.6×). `R CMD INSTALL` is a shared floor; compiled packages await binary support.
+- `BENCHMARK.md` rewritten as a multi-axis honest report; `scripts/bench.sh` gains an end-to-end install section. New lesson 28.
+
 ## v0.5.0 — 暖缓存 / Warm cache
 
 **中文**
