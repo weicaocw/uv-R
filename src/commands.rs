@@ -11,9 +11,59 @@ use crate::version::Version;
 use std::collections::BTreeMap;
 use std::path::Path;
 
-/// 按计划逐个下载 tarball 并用 `r_bin` 安装到 `lib_dir`；返回安装清单。
+/// tarball 在 `download_dir` 里的落点路径。
+fn tarball_path(download_dir: &Path, item: &InstallItem) -> std::path::PathBuf {
+    download_dir.join(format!("{}_{}.tar.gz", item.name, item.version))
+}
+
+/// 对 `plan` 里每个 item 并行执行闭包 `f`，最多 `concurrency` 个线程同时跑。
 ///
-/// `install`（求解后）与 `sync`（按 lockfile）共用这段下载 + 安装循环。
+/// 用**作用域线程**（`thread::scope`）+ 一个共享游标（`Mutex<usize>`）做"工作窃取"：
+/// 每个线程循环领取下一个待办下标，干完再领，直到取完。任一 `f` 失败则收集错误、整体返回 `Err`。
+/// 把 `f` 作为参数注入，使这套并行编排**无需网络即可单测**（测试传一个记录调用的闭包）。
+fn parallel_for_each<F>(plan: &[InstallItem], concurrency: usize, f: F) -> Result<(), String>
+where
+    F: Fn(&InstallItem) -> Result<(), String> + Sync,
+{
+    if plan.is_empty() {
+        return Ok(());
+    }
+    let next = std::sync::Mutex::new(0usize);
+    let errors = std::sync::Mutex::new(Vec::<String>::new());
+    let workers = concurrency.clamp(1, plan.len());
+    std::thread::scope(|scope| {
+        for _ in 0..workers {
+            scope.spawn(|| {
+                loop {
+                    // 领取下一个下标（锁只在这一瞬间持有）。
+                    let i = {
+                        let mut cursor = next.lock().unwrap();
+                        let i = *cursor;
+                        *cursor += 1;
+                        i
+                    };
+                    if i >= plan.len() {
+                        break;
+                    }
+                    if let Err(e) = f(&plan[i]) {
+                        errors.lock().unwrap().push(e);
+                    }
+                }
+            });
+        }
+    });
+    let errs = errors.into_inner().unwrap();
+    if errs.is_empty() {
+        Ok(())
+    } else {
+        Err(errs.join("; "))
+    }
+}
+
+/// 按计划安装到 `lib_dir`：**先并行预取所有 tarball**，再按顺序 `R CMD INSTALL`。
+///
+/// `install`（求解后）与 `sync`（按 lockfile）共用。下载彼此独立、可并行（uv 的招牌吞吐优化）；
+/// 安装仍串行（`download` 命中已下好的缓存即刻返回）。
 fn run_plan(
     plan: &[InstallItem],
     lib_dir: &Path,
@@ -21,9 +71,17 @@ fn run_plan(
     r_bin: &Path,
 ) -> Result<Vec<String>, String> {
     std::fs::create_dir_all(download_dir).map_err(|e| e.to_string())?;
+    let jobs = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    // 阶段一：并行下载所有 tarball。
+    parallel_for_each(plan, jobs, |item| {
+        install::download(&item.url, &tarball_path(download_dir, item))
+    })?;
+    // 阶段二：串行安装（download 此时多为缓存命中）。
     let mut installed = Vec::new();
     for item in plan {
-        let tarball = download_dir.join(format!("{}_{}.tar.gz", item.name, item.version));
+        let tarball = tarball_path(download_dir, item);
         install::download(&item.url, &tarball)?;
         install::install_tarball(&tarball, lib_dir, r_bin)?;
         installed.push(format!("{} {}", item.name, item.version));
@@ -200,6 +258,59 @@ Depends: R (>= 3.0.0), pkgA (>= 1.1.0)
             pkgb.url,
             "https://repo.example/src/contrib/pkgB_2.0.0.tar.gz"
         );
+    }
+
+    fn item(name: &str) -> InstallItem {
+        InstallItem {
+            name: name.to_string(),
+            version: "1.0".to_string(),
+            url: "u".to_string(),
+        }
+    }
+
+    #[test]
+    fn parallel_runs_f_for_every_item() {
+        let plan = vec![item("a"), item("b"), item("c"), item("d")];
+        let seen = std::sync::Mutex::new(std::collections::HashSet::new());
+        parallel_for_each(&plan, 3, |it| {
+            seen.lock().unwrap().insert(it.name.clone());
+            Ok(())
+        })
+        .unwrap();
+        let s = seen.into_inner().unwrap();
+        assert_eq!(s.len(), 4); // 每个都跑到，无重无漏
+        assert!(s.contains("a") && s.contains("d"));
+    }
+
+    #[test]
+    fn parallel_concurrency_one_still_does_all() {
+        let plan = vec![item("a"), item("b")];
+        let count = std::sync::Mutex::new(0);
+        parallel_for_each(&plan, 1, |_| {
+            *count.lock().unwrap() += 1;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(*count.lock().unwrap(), 2);
+    }
+
+    #[test]
+    fn parallel_propagates_error() {
+        let plan = vec![item("ok"), item("bad")];
+        let err = parallel_for_each(&plan, 4, |it| {
+            if it.name == "bad" {
+                Err("boom".to_string())
+            } else {
+                Ok(())
+            }
+        })
+        .unwrap_err();
+        assert!(err.contains("boom"));
+    }
+
+    #[test]
+    fn parallel_empty_is_ok() {
+        assert!(parallel_for_each(&[], 4, |_| Ok(())).is_ok());
     }
 
     #[test]
