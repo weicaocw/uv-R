@@ -83,12 +83,14 @@ pub struct Package {
     pub name: String,
     pub version: Version,
     pub depends: Vec<Dependency>,
+    /// 这个包来自哪个仓库基址（用于下载 tarball）。本地 / 未知时为空串。
+    pub repo: String,
 }
 
 impl Package {
     /// 从一条 DCF 记录构造一个包；缺少 `Package` / `Version` 则返回 None。
     /// 依赖来自 `Depends` / `Imports` / `LinkingTo` 三个字段的合并。
-    fn from_record(rec: &Record) -> Option<Package> {
+    fn from_record(rec: &Record, repo: &str) -> Option<Package> {
         let name = rec.get("Package")?.clone();
         let version = Version::parse(rec.get("Version")?)?;
         let mut depends = Vec::new();
@@ -101,6 +103,7 @@ impl Package {
             name,
             version,
             depends,
+            repo: repo.to_string(),
         })
     }
 }
@@ -112,15 +115,27 @@ pub struct PackageIndex {
 }
 
 impl PackageIndex {
-    /// 解析整份 `PACKAGES` 文本，建立索引。无法构造成包的记录被跳过。
+    /// 解析整份 `PACKAGES` 文本，建立索引（不记录来源仓库）。
     pub fn from_packages_file(input: &str) -> PackageIndex {
+        Self::from_repo(input, "")
+    }
+
+    /// 解析整份 `PACKAGES`，并把每个包标记为来自 `repo`（多仓库与下载会用到）。
+    pub fn from_repo(input: &str, repo: &str) -> PackageIndex {
         let mut by_name: BTreeMap<String, Vec<Package>> = BTreeMap::new();
         for rec in parse(input) {
-            if let Some(pkg) = Package::from_record(&rec) {
+            if let Some(pkg) = Package::from_record(&rec, repo) {
                 by_name.entry(pkg.name.clone()).or_default().push(pkg);
             }
         }
         PackageIndex { by_name }
+    }
+
+    /// 合并另一个索引（多仓库）：同名包的各版本累加到一起。
+    pub fn merge(&mut self, other: PackageIndex) {
+        for (name, pkgs) in other.by_name {
+            self.by_name.entry(name).or_default().extend(pkgs);
+        }
     }
 
     /// 某包名下的所有版本（没有则返回空切片）。

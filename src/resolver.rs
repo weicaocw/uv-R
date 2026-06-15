@@ -303,4 +303,31 @@ Depends: B, A
         assert_eq!(sol["A"], Version::parse("1.0.0").unwrap());
         assert_eq!(sol["B"], Version::parse("1.0.0").unwrap());
     }
+
+    // —— 多仓库 ——
+
+    #[test]
+    fn merged_packages_keep_their_repo() {
+        let mut idx = PackageIndex::from_repo("Package: A\nVersion: 1.0\n", "https://r1");
+        idx.merge(PackageIndex::from_repo(
+            "Package: B\nVersion: 1.0\n",
+            "https://r2",
+        ));
+        assert_eq!(idx.versions_of("A")[0].repo, "https://r1");
+        assert_eq!(idx.versions_of("B")[0].repo, "https://r2");
+    }
+
+    #[test]
+    fn resolves_across_merged_repos() {
+        // A 在 r1、依赖 B；B 在 r2。单仓库解不全，合并后能解。
+        let mut idx =
+            PackageIndex::from_repo("Package: A\nVersion: 1.0\nImports: B\n", "https://r1");
+        idx.merge(PackageIndex::from_repo(
+            "Package: B\nVersion: 1.0\n",
+            "https://r2",
+        ));
+        let sol = resolve_pubgrub(&idx, "A").unwrap();
+        assert_eq!(sol["A"], Version::parse("1.0").unwrap());
+        assert_eq!(sol["B"], Version::parse("1.0").unwrap());
+    }
 }

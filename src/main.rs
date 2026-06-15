@@ -2,10 +2,10 @@
 //!
 //! 用法：
 //!   uvr lock    <PACKAGES 文件> <根包>...
-//!   uvr lock    --repo <仓库基址> <根包>...
-//!   uvr install --repo <仓库基址> [--lib <目录>] <根包>...
+//!   uvr lock    --repo <仓库> [--repo <仓库2> ...] <根包>...
+//!   uvr install --repo <仓库> [--repo <仓库2> ...] [--lib <目录>] <根包>...
 //!
-//! lock 把 lockfile 打到标准输出；install 下载并安装到**项目本地库**。
+//! 支持多仓库：抓取并合并多个仓库的 PACKAGES 后再求解 / 安装。
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -22,54 +22,21 @@ fn main() -> ExitCode {
 fn usage() -> ExitCode {
     eprintln!("用法 / usage:");
     eprintln!("  uvr lock    <PACKAGES-file> <root-package>...");
-    eprintln!("  uvr lock    --repo <repo-base-url> <root-package>...");
-    eprintln!("  uvr install --repo <repo-base-url> [--lib <dir>] <root-package>...");
+    eprintln!("  uvr lock    --repo <url> [--repo <url2> ...] <root-package>...");
+    eprintln!("  uvr install --repo <url> [--repo <url2> ...] [--lib <dir>] <root-package>...");
     ExitCode::FAILURE
 }
 
-fn lock(rest: &[String]) -> ExitCode {
-    let (text, roots) = match rest.first().map(String::as_str) {
-        Some("--repo") if rest.len() >= 3 => {
-            let url = uvr::fetch::packages_url(&rest[1]);
-            match uvr::fetch::get_text(&url) {
-                Ok(t) => (t, &rest[2..]),
-                Err(e) => {
-                    eprintln!("抓取失败 / fetch failed: {e}");
-                    return ExitCode::FAILURE;
-                }
-            }
-        }
-        Some(_) if rest.len() >= 2 => match std::fs::read_to_string(&rest[0]) {
-            Ok(t) => (t, &rest[1..]),
-            Err(e) => {
-                eprintln!("读不了文件 / cannot read {}: {e}", rest[0]);
-                return ExitCode::FAILURE;
-            }
-        },
-        _ => return usage(),
-    };
-    match uvr::commands::lock_from_packages(&text, roots) {
-        Ok(out) => {
-            print!("{out}");
-            ExitCode::SUCCESS
-        }
-        Err(e) => {
-            eprintln!("求解失败 / resolve failed: {e:?}");
-            ExitCode::FAILURE
-        }
-    }
-}
-
-fn install(rest: &[String]) -> ExitCode {
-    // 解析 --repo <url> [--lib <dir>] <pkg>...
-    let mut repo: Option<String> = None;
+/// 解析 `--repo`（可多个）、`--lib`，其余作为根包名。
+fn parse_flags(rest: &[String]) -> (Vec<String>, PathBuf, Vec<String>) {
+    let mut repos = Vec::new();
     let mut lib = PathBuf::from("r-lib");
-    let mut roots: Vec<String> = Vec::new();
+    let mut roots = Vec::new();
     let mut i = 0;
     while i < rest.len() {
         match rest[i].as_str() {
             "--repo" if i + 1 < rest.len() => {
-                repo = Some(rest[i + 1].clone());
+                repos.push(rest[i + 1].clone());
                 i += 2;
             }
             "--lib" if i + 1 < rest.len() => {
@@ -82,26 +49,76 @@ fn install(rest: &[String]) -> ExitCode {
             }
         }
     }
+    (repos, lib, roots)
+}
 
-    let Some(repo) = repo else {
+/// 抓取每个仓库的 PACKAGES，组成 (文本, 仓库) 源列表。
+fn fetch_sources(repos: &[String]) -> Result<Vec<(String, String)>, String> {
+    let mut sources = Vec::new();
+    for repo in repos {
+        let url = uvr::fetch::packages_url(repo);
+        let text = uvr::fetch::get_text(&url).map_err(|e| format!("{repo}: {e}"))?;
+        sources.push((text, repo.clone()));
+    }
+    Ok(sources)
+}
+
+fn finish_lock(sources: &[(String, String)], roots: &[String]) -> ExitCode {
+    match uvr::commands::lock_from_sources(sources, roots) {
+        Ok(out) => {
+            print!("{out}");
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("求解失败 / resolve failed: {e:?}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn lock(rest: &[String]) -> ExitCode {
+    if rest.iter().any(|a| a == "--repo") {
+        let (repos, _lib, roots) = parse_flags(rest);
+        match fetch_sources(&repos) {
+            Ok(sources) => finish_lock(&sources, &roots),
+            Err(e) => {
+                eprintln!("抓取失败 / fetch failed: {e}");
+                ExitCode::FAILURE
+            }
+        }
+    } else if rest.len() >= 2 {
+        // 本地文件：uvr lock <file> <pkg>...
+        match std::fs::read_to_string(&rest[0]) {
+            Ok(text) => finish_lock(&[(text, String::new())], &rest[1..]),
+            Err(e) => {
+                eprintln!("读不了文件 / cannot read {}: {e}", rest[0]);
+                ExitCode::FAILURE
+            }
+        }
+    } else {
+        usage()
+    }
+}
+
+fn install(rest: &[String]) -> ExitCode {
+    let (repos, lib, roots) = parse_flags(rest);
+    if repos.is_empty() {
         eprintln!("install 需要 --repo <url> / install needs --repo <url>");
         return usage();
-    };
+    }
     if roots.is_empty() {
         eprintln!("install 需要至少一个包名 / install needs at least one package");
         return ExitCode::FAILURE;
     }
-
-    let url = uvr::fetch::packages_url(&repo);
-    let text = match uvr::fetch::get_text(&url) {
-        Ok(t) => t,
+    let sources = match fetch_sources(&repos) {
+        Ok(s) => s,
         Err(e) => {
             eprintln!("抓取失败 / fetch failed: {e}");
             return ExitCode::FAILURE;
         }
     };
     let download_dir = PathBuf::from("target/uvr-cache");
-    match uvr::commands::install_packages(&text, &roots, &repo, &lib, &download_dir) {
+    match uvr::commands::install_packages(&sources, &roots, &lib, &download_dir) {
         Ok(installed) => {
             for p in &installed {
                 println!("installed {p}");
