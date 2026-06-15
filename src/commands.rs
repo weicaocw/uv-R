@@ -151,6 +151,88 @@ pub struct InstallItem {
     pub url: String,
 }
 
+/// 纯函数：把待装项按**依赖顺序**重排（依赖在前、依赖者在后）——拓扑排序。
+///
+/// 边取自 `index` 里每个包的依赖字段，只保留指向**本批待装集合内**的依赖（跳过 base/recommended
+/// 与不在集合里的）。用 Kahn 算法：每轮在"入度为 0（依赖都装好了）"里取**字典序最小**的，
+/// 保证确定性输出。万一成环（求解后理论上不会），剩余项按名字追加，绝不丢包。
+/// `index` 信息不足（如自包含 sync 没传 `--repo`）时，没有边 → 退化为按名字排序。
+fn topo_order(items: Vec<InstallItem>, index: &PackageIndex) -> Vec<InstallItem> {
+    use std::collections::{BTreeMap, BTreeSet};
+
+    let names: BTreeSet<String> = items.iter().map(|i| i.name.clone()).collect();
+
+    // 每个包"在集合内、需先装好"的依赖集合。
+    let mut deps_of: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for it in &items {
+        let mut ds = BTreeSet::new();
+        if let Some(pkg) = index
+            .versions_of(&it.name)
+            .iter()
+            .find(|p| p.version.to_string() == it.version)
+        {
+            for d in &pkg.depends {
+                if d.name != it.name && names.contains(&d.name) {
+                    ds.insert(d.name.clone());
+                }
+            }
+        }
+        deps_of.insert(it.name.clone(), ds);
+    }
+
+    // 入度 = 还有多少依赖没装；dependents：某依赖被谁依赖（用于装好后递减入度）。
+    let mut indeg: BTreeMap<String, usize> = deps_of
+        .iter()
+        .map(|(n, ds)| (n.clone(), ds.len()))
+        .collect();
+    let mut dependents: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for (n, ds) in &deps_of {
+        for d in ds {
+            dependents.entry(d.clone()).or_default().push(n.clone());
+        }
+    }
+
+    // 就绪集合（入度 0），每次取名字最小者 → 确定性。
+    let mut ready: BTreeSet<String> = indeg
+        .iter()
+        .filter(|(_, v)| **v == 0)
+        .map(|(n, _)| n.clone())
+        .collect();
+    let mut order: Vec<String> = Vec::new();
+    while let Some(n) = ready.iter().next().cloned() {
+        ready.remove(&n);
+        order.push(n.clone());
+        if let Some(deps) = dependents.get(&n) {
+            for dep in deps {
+                if let Some(e) = indeg.get_mut(dep) {
+                    *e -= 1;
+                    if *e == 0 {
+                        ready.insert(dep.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    // 成环兜底：把剩余项按名字补上，绝不丢包。
+    if order.len() < items.len() {
+        let placed: BTreeSet<String> = order.iter().cloned().collect();
+        for it in &items {
+            if !placed.contains(&it.name) {
+                order.push(it.name.clone());
+            }
+        }
+    }
+
+    // 名字 → 项，按拓扑序取回。
+    let mut by_name: BTreeMap<String, InstallItem> =
+        items.into_iter().map(|i| (i.name.clone(), i)).collect();
+    order
+        .into_iter()
+        .filter_map(|n| by_name.remove(&n))
+        .collect()
+}
+
 /// 纯函数：从多个来源解析出"要装哪些包、各自 tarball URL"——按**每个包自己的仓库**拼地址。
 pub fn install_plan(
     sources: &[Source],
@@ -158,7 +240,7 @@ pub fn install_plan(
 ) -> Result<Vec<InstallItem>, ResolveError> {
     let index = build_index(sources);
     let resolved = resolve_all(&index, roots)?;
-    Ok(resolved
+    let items: Vec<InstallItem> = resolved
         .into_iter()
         .map(|(name, version)| {
             // 找到该 name+version 的包，用它自己的仓库拼下载地址
@@ -172,7 +254,8 @@ pub fn install_plan(
             let url = install::tarball_url(repo, &name, &version);
             InstallItem { name, version, url }
         })
-        .collect())
+        .collect();
+    Ok(topo_order(items, &index)) // 依赖先于依赖者
 }
 
 /// 按计划下载并安装到**项目本地库** `lib_dir`；tarball 暂存到 `download_dir`。
@@ -202,7 +285,7 @@ pub fn sync_plan(
     sources: &[Source],
 ) -> Result<Vec<InstallItem>, String> {
     let index = build_index(sources);
-    locked
+    let items = locked
         .iter()
         .map(|(name, lk)| {
             let repo = if lk.repo.is_empty() {
@@ -228,7 +311,9 @@ pub fn sync_plan(
                 url,
             })
         })
-        .collect()
+        .collect::<Result<Vec<_>, String>>()?;
+    // 有索引（传了 --repo）时按依赖排序；自包含 sync 无图则退化为名字序。
+    Ok(topo_order(items, &index))
 }
 
 /// 读 lockfile 文本，按其中锁定的版本下载并安装到 `lib_dir`（不求解）。
@@ -341,6 +426,51 @@ Depends: R (>= 3.0.0), pkgA (>= 1.1.0)
     #[test]
     fn parallel_empty_is_ok() {
         assert!(parallel_for_each(&[], 4, |_| Ok(())).is_ok());
+    }
+
+    fn idx(pkgs: &str) -> PackageIndex {
+        build_index(&[(pkgs.to_string(), "https://r".to_string())])
+    }
+
+    #[test]
+    fn topo_orders_chain_deps_first() {
+        // C → B → A：无论输入顺序，输出都是 A、B、C。
+        let index = idx(
+            "Package: pkgA\nVersion: 1.0\n\nPackage: pkgB\nVersion: 1.0\nImports: pkgA\n\nPackage: pkgC\nVersion: 1.0\nImports: pkgB\n",
+        );
+        let got = topo_order(vec![item("pkgC"), item("pkgA"), item("pkgB")], &index);
+        let order: Vec<&str> = got.iter().map(|i| i.name.as_str()).collect();
+        assert_eq!(order, ["pkgA", "pkgB", "pkgC"]);
+    }
+
+    #[test]
+    fn topo_orders_diamond() {
+        // D → B,C；B,C → A。A 最先、D 最后，B/C 之间按名字序。
+        let index = idx(
+            "Package: pkgA\nVersion: 1.0\n\nPackage: pkgB\nVersion: 1.0\nImports: pkgA\n\nPackage: pkgC\nVersion: 1.0\nImports: pkgA\n\nPackage: pkgD\nVersion: 1.0\nImports: pkgB, pkgC\n",
+        );
+        let got = topo_order(
+            vec![item("pkgD"), item("pkgC"), item("pkgB"), item("pkgA")],
+            &index,
+        );
+        let order: Vec<&str> = got.iter().map(|i| i.name.as_str()).collect();
+        assert_eq!(order, ["pkgA", "pkgB", "pkgC", "pkgD"]);
+    }
+
+    #[test]
+    fn topo_independent_uses_name_order() {
+        let index = idx("Package: pkgB\nVersion: 1.0\n\nPackage: pkgA\nVersion: 1.0\n");
+        let got = topo_order(vec![item("pkgB"), item("pkgA")], &index);
+        let order: Vec<&str> = got.iter().map(|i| i.name.as_str()).collect();
+        assert_eq!(order, ["pkgA", "pkgB"]);
+    }
+
+    #[test]
+    fn topo_empty_index_falls_back_to_name_order() {
+        // 无图（如自包含 sync 没传 --repo）→ 退化为名字序，绝不丢包。
+        let got = topo_order(vec![item("z"), item("a")], &PackageIndex::default());
+        let order: Vec<&str> = got.iter().map(|i| i.name.as_str()).collect();
+        assert_eq!(order, ["a", "z"]);
     }
 
     fn locked(ver: &str, repo: &str) -> Locked {
