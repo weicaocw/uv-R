@@ -128,6 +128,11 @@ impl PackageIndex {
         self.by_name.get(name).map(Vec::as_slice).unwrap_or(&[])
     }
 
+    /// 遍历索引里的所有包（各包名下的各版本展平）。
+    pub fn packages(&self) -> impl Iterator<Item = &Package> + '_ {
+        self.by_name.values().flatten()
+    }
+
     /// 索引里有多少个不同的包名。
     pub fn len(&self) -> usize {
         self.by_name.len()

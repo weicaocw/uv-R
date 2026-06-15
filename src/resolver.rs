@@ -1,10 +1,8 @@
-//! 依赖求解（教学版）：从包索引里挑出满足约束的版本，递归解析整棵依赖树，并检测冲突。
-//!
-//! 注：这是便于学习的简化求解器；工业级实现（如 Rust 的 `pubgrub`）有更强的
-//! 回溯与冲突解释能力，但引入它需要联网拉取 crate。这里用纯 std 自己写，便于离线学习。
+//! 依赖求解：一个手写的教学版（贪心、不回溯）与一个接 `pubgrub` 的工业版（回溯）。
 
 use crate::metadata::{Package, PackageIndex};
-use crate::version::{Constraint, Version};
+use crate::version::{Constraint, Op, Version};
+use pubgrub::{OfflineDependencyProvider, Ranges};
 use std::collections::BTreeMap;
 
 /// 求解失败的原因。
@@ -14,8 +12,10 @@ pub enum ResolveError {
     NotFound(String),
     /// 包存在，但没有版本满足约束。
     Unsatisfiable(String),
-    /// 同一个包被要求了互不兼容的版本。
+    /// 同一个包被要求了互不兼容的版本（贪心求解器的判断）。
     Conflict(String),
+    /// pubgrub 求解器报告无解（含其推导说明）。
+    NoSolution(String),
 }
 
 /// 随 R 一起发行的 base / recommended 包：它们不在 `PACKAGES` 里、也无需单独安装，求解时跳过。
@@ -61,9 +61,6 @@ pub fn is_builtin(name: &str) -> bool {
 }
 
 /// 从索引中选出满足约束的"最高版本"包；约束为 `None` 表示不限版本。
-///
-/// 返回的引用借用自 `index`——注意签名里的生命周期 `'a`：它告诉编译器
-/// "返回的 `&Package` 活得和传入的 `index` 一样久"。
 pub fn best_match<'a>(
     index: &'a PackageIndex,
     name: &str,
@@ -76,12 +73,12 @@ pub fn best_match<'a>(
         .max_by(|a, b| a.version.cmp(&b.version))
 }
 
-/// 从根包出发，递归解析所有传递依赖，得到"包名 → 选定版本"。
+/// 手写教学版求解器：从根包出发递归解析所有传递依赖，**贪心选最高满足版本、不回溯**。
 ///
-/// - 跳过随 R 自带的 base / recommended 包（含对 `R` 本身的伪依赖）；
+/// - 跳过随 R 自带的 base / recommended 包；
 /// - 找不到包 / 无满足版本 / 版本冲突 → 返回对应的 [`ResolveError`]；
-/// - 简化：贪心选"最高满足版本"且**不回溯**。真实求解器（pubgrub）会回溯，
-///   以避开那些"换个版本本可满足"的可避免冲突。
+/// - 因为不回溯，可能把"换个版本本可满足"的情况误报为冲突——这正是工业版用
+///   [`resolve_pubgrub`] 的意义。
 pub fn resolve(
     index: &PackageIndex,
     root: &str,
@@ -116,6 +113,50 @@ pub fn resolve(
         }
     }
     Ok(resolved)
+}
+
+/// 把我们的 `Constraint` 转成 pubgrub 的版本集合 `Ranges`。
+fn constraint_to_range(constraint: Option<&Constraint>) -> Ranges<Version> {
+    match constraint {
+        None => Ranges::full(),
+        Some(c) => match c.op() {
+            Op::Ge => Ranges::higher_than(c.version().clone()),
+            Op::Gt => Ranges::strictly_higher_than(c.version().clone()),
+            Op::Le => Ranges::lower_than(c.version().clone()),
+            Op::Lt => Ranges::strictly_lower_than(c.version().clone()),
+            Op::Eq => Ranges::singleton(c.version().clone()),
+        },
+    }
+}
+
+/// 工业版求解器：把依赖图灌进 pubgrub 的 `OfflineDependencyProvider`，调用 `pubgrub::resolve`。
+///
+/// 相比 [`resolve`]，pubgrub **会回溯**，能解开"贪心会误判为冲突"的情形。
+pub fn resolve_pubgrub(
+    index: &PackageIndex,
+    root: &str,
+) -> Result<BTreeMap<String, Version>, ResolveError> {
+    let mut dp = OfflineDependencyProvider::<String, Ranges<Version>>::new();
+    for pkg in index.packages() {
+        let deps: Vec<(String, Ranges<Version>)> = pkg
+            .depends
+            .iter()
+            .filter(|d| !is_builtin(&d.name))
+            .map(|d| (d.name.clone(), constraint_to_range(d.constraint.as_ref())))
+            .collect();
+        dp.add_dependencies(pkg.name.clone(), pkg.version.clone(), deps);
+    }
+
+    // pubgrub 从一个具体的 (根包, 根版本) 出发；取根包的最高可用版本。
+    let root_version = best_match(index, root, None)
+        .ok_or_else(|| ResolveError::NotFound(root.to_string()))?
+        .version
+        .clone();
+
+    match pubgrub::resolve(&dp, root.to_string(), root_version) {
+        Ok(solution) => Ok(solution.into_iter().collect()),
+        Err(e) => Err(ResolveError::NoSolution(format!("{e:?}"))),
+    }
 }
 
 #[cfg(test)]
@@ -172,7 +213,6 @@ Depends: R (>= 3.0.0), pkgA (>= 1.1.0)
 
     #[test]
     fn skips_builtin_packages() {
-        // 依赖 R / utils / methods（都随 R 自带），求解应成功且结果不含它们
         let idx = PackageIndex::from_packages_file(
             "Package: pkgB\nVersion: 2.0.0\nDepends: R (>= 3.0.0), utils, methods\n",
         );
@@ -215,10 +255,52 @@ Depends: low, high
     #[test]
     fn detects_version_conflict() {
         let idx = PackageIndex::from_packages_file(CONFLICT_SAMPLE);
-        // low 要 pkgA < 1.1.0，high 要 pkgA >= 1.2.0 —— 不可兼容
         assert_eq!(
             resolve(&idx, "root"),
             Err(ResolveError::Conflict("pkgA".to_string()))
         );
+    }
+
+    // —— pubgrub 工业版 ——
+
+    #[test]
+    fn pubgrub_agrees_with_handwritten() {
+        let idx = index();
+        let a = resolve(&idx, "pkgB").unwrap();
+        let b = resolve_pubgrub(&idx, "pkgB").unwrap();
+        assert_eq!(a, b); // 无冲突的简单图上，两者给出同一个解
+    }
+
+    // 一个"贪心会误判冲突、但其实有解"的图：root 依赖 B、A；A 有 1.0/2.0；
+    // B 要求 A < 2.0。贪心先把 A 选成最高 2.0 → 撞 B 的 A<2 → 报冲突；
+    // pubgrub 回溯把 A 选成 1.0 → 有解。
+    const BACKTRACK_SAMPLE: &str = "\
+Package: A
+Version: 1.0.0
+
+Package: A
+Version: 2.0.0
+
+Package: B
+Version: 1.0.0
+Depends: A (< 2.0.0)
+
+Package: root
+Version: 1.0.0
+Depends: B, A
+";
+
+    #[test]
+    fn pubgrub_backtracks_where_greedy_conflicts() {
+        let idx = PackageIndex::from_packages_file(BACKTRACK_SAMPLE);
+        // 贪心求解器：误报冲突
+        assert!(matches!(
+            resolve(&idx, "root"),
+            Err(ResolveError::Conflict(_))
+        ));
+        // pubgrub：回溯成功，A 选 1.0.0
+        let sol = resolve_pubgrub(&idx, "root").unwrap();
+        assert_eq!(sol["A"], Version::parse("1.0.0").unwrap());
+        assert_eq!(sol["B"], Version::parse("1.0.0").unwrap());
     }
 }
