@@ -112,6 +112,55 @@ pub fn write_pin(dir: &Path, spec: &str) -> std::io::Result<()> {
     std::fs::write(pin_path(dir), render_pin(spec))
 }
 
+/// 纯函数：版本规格 `spec` 是否匹配版本 `v`——按点分段做**前缀**匹配。
+///
+/// `4.5` 匹配 `4.5.2`；`4` 匹配任意 `4.x`；`4.5.2` 只精确匹配 `4.5.2`；
+/// `4.5.2` 不匹配 `4.5`（规格比实际更具体时不算命中）。
+pub fn version_matches(spec: &str, v: &Version) -> bool {
+    let full = v.to_string();
+    let want: Vec<&str> = spec.split('.').collect();
+    let have: Vec<&str> = full.split('.').collect();
+    want.len() <= have.len() && want.iter().zip(&have).all(|(a, b)| a == b)
+}
+
+/// 选 R 时可能的失败。
+#[derive(Debug, PartialEq, Eq)]
+pub enum RSelectError {
+    /// 一个 R 都没发现。
+    NoRInstalled,
+    /// 钉了某版本，但没有任何已装的 R 匹配它。
+    PinnedNotFound(String),
+}
+
+/// 纯函数：按优先级选出该用的那个 R。
+///
+/// 规则：有 pin → 在已装里挑**匹配且最高**的；无 pin → 挑**最高版本**。
+/// 一个都没装 → `NoRInstalled`；钉了却没装 → `PinnedNotFound`。
+pub fn select_r(pin: Option<&str>, installs: &[RInstall]) -> Result<RInstall, RSelectError> {
+    if installs.is_empty() {
+        return Err(RSelectError::NoRInstalled);
+    }
+    match pin {
+        Some(spec) => installs
+            .iter()
+            .filter(|i| version_matches(spec, &i.version))
+            .max_by(|a, b| a.version.cmp(&b.version))
+            .cloned()
+            .ok_or_else(|| RSelectError::PinnedNotFound(spec.to_string())),
+        None => Ok(installs
+            .iter()
+            .max_by(|a, b| a.version.cmp(&b.version))
+            .cloned()
+            .expect("已确认非空")),
+    }
+}
+
+/// 把"读 pin + 发现 + 选择"串起来：项目目录 → 最终该用的 R。
+pub fn resolve_r(project_dir: &Path) -> Result<RInstall, RSelectError> {
+    let pin = read_pin(project_dir);
+    select_r(pin.as_deref(), &discover())
+}
+
 /// 从 `R --version` 的输出里解析出版本号。
 ///
 /// 典型首行：`R version 4.5.2 (2025-10-31) -- "..."`。
@@ -236,5 +285,53 @@ mod tests {
         write_pin(&dir, "4.5.2").unwrap();
         assert_eq!(read_pin(&dir), Some("4.5.2".to_string()));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn version_matches_prefix() {
+        let v = Version::parse("4.5.2").unwrap();
+        assert!(version_matches("4.5.2", &v)); // 精确
+        assert!(version_matches("4.5", &v)); // 前缀
+        assert!(version_matches("4", &v)); // 任意 4.x
+        assert!(!version_matches("4.6", &v)); // 不同小版本
+        assert!(!version_matches("4.5.2.1", &v)); // 规格更具体 → 不匹配
+    }
+
+    #[test]
+    fn select_errors_when_no_r() {
+        assert_eq!(select_r(None, &[]), Err(RSelectError::NoRInstalled));
+    }
+
+    #[test]
+    fn select_without_pin_takes_highest() {
+        let installs = vec![install("/a/R", "4.4.0"), install("/b/R", "4.5.2")];
+        assert_eq!(select_r(None, &installs).unwrap().version, ver("4.5.2"));
+    }
+
+    #[test]
+    fn select_with_pin_picks_matching_highest() {
+        let installs = vec![
+            install("/a/R", "4.4.0"),
+            install("/b/R", "4.4.2"),
+            install("/c/R", "4.5.2"),
+        ];
+        // pin "4.4" 匹配 4.4.0 与 4.4.2，取更高的 4.4.2（而非全局最高 4.5.2）。
+        assert_eq!(
+            select_r(Some("4.4"), &installs).unwrap().version,
+            ver("4.4.2")
+        );
+    }
+
+    #[test]
+    fn select_with_unmatched_pin_errors() {
+        let installs = vec![install("/a/R", "4.5.2")];
+        assert_eq!(
+            select_r(Some("3.6"), &installs),
+            Err(RSelectError::PinnedNotFound("3.6".to_string()))
+        );
+    }
+
+    fn ver(s: &str) -> Version {
+        Version::parse(s).unwrap()
     }
 }
