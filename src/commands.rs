@@ -6,7 +6,7 @@
 use crate::install;
 use crate::lockfile;
 use crate::metadata::PackageIndex;
-use crate::resolver::{ResolveError, resolve};
+use crate::resolver::{ResolveError, resolve_pubgrub};
 use crate::version::Version;
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -16,7 +16,7 @@ pub fn lock_from_packages(packages_text: &str, roots: &[String]) -> Result<Strin
     let index = PackageIndex::from_packages_file(packages_text);
     let mut combined: BTreeMap<String, Version> = BTreeMap::new();
     for root in roots {
-        combined.extend(resolve(&index, root)?);
+        combined.extend(resolve_pubgrub(&index, root)?);
     }
     Ok(lockfile::render(&combined))
 }
@@ -38,7 +38,7 @@ pub fn install_plan(
     let index = PackageIndex::from_packages_file(packages_text);
     let mut combined: BTreeMap<String, Version> = BTreeMap::new();
     for root in roots {
-        combined.extend(resolve(&index, root)?);
+        combined.extend(resolve_pubgrub(&index, root)?);
     }
     Ok(combined
         .into_iter()
