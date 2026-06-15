@@ -1,16 +1,43 @@
-// Step 02：给 R 的版本号建模。
-// 一个 R 版本（如 "1.2.3"、"3.4-1"）本质是"一串整数"，段数不固定，
-// 所以我们用一个可增长的列表 Vec 来装这些整数。
+// Step 03：把字符串解析成 Version。
+// 主题：用 Option / Result / match 处理"可能失败"。
 
 #[derive(Debug)]
 struct Version {
     parts: Vec<u64>,
 }
 
-fn main() {
-    let a = Version { parts: vec![1, 2, 3] };
-    let b = Version { parts: vec![3, 4] };
+impl Version {
+    // 把像 "1.2.3"、"3.4-1" 的字符串解析成 Version；
+    // 只要有一段不是数字，就返回 None（表示"解析失败"）。
+    fn parse(s: &str) -> Option<Version> {
+        let mut parts = Vec::new();
+        for piece in s.split(['.', '-']) {
+            match piece.parse::<u64>() {
+                Ok(number) => parts.push(number),
+                Err(_) => return None,
+            }
+        }
+        Some(Version { parts })
+    }
+}
 
-    println!("a = {:?}", a);
-    println!("b = {:?}", b);
+fn main() {
+    println!("{:?}", Version::parse("1.2.3")); // Some(Version { parts: [1, 2, 3] })
+    println!("{:?}", Version::parse("1.2.x")); // None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_dotted_version() {
+        let v = Version::parse("1.2.3").unwrap();
+        assert_eq!(v.parts, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn rejects_non_numeric() {
+        assert!(Version::parse("1.2.x").is_none());
+    }
 }
