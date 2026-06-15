@@ -7,7 +7,7 @@
 **Rust 语言、R 包管理、软件设计**。
 
 - 每一小步都遵循 TDD：失败的测试 → 最小实现 → 通过。
-- 每一小步都有一篇**自包含的简体中文教学课**：`docs/lessons/step-NN-*.md`（共 37 课）。
+- 每一小步都有一篇**自包含的简体中文教学课**：`docs/lessons/step-NN-*.md`（共 39 课）。
 - 课程地图与进度见 `docs/CURRICULUM.md`。
 - 提交与 PR 信息**中英双语**，便于事后翻历史复习。
 
@@ -18,7 +18,7 @@ documented as a self-contained Chinese lesson under `docs/lessons/`.
 > 📖 **用户手册（中英对照）/ User manual (bilingual)**：[`docs/MANUAL.md`](docs/MANUAL.md)
 > —— 面向使用的完整参考：命令、R 版本管理、缓存、项目布局、排错。
 
-## 现在能做什么（v0.8）/ What works now (v0.8)
+## 现在能做什么（v0.9）/ What works now (v0.9)
 
 **离线求解 + 锁定 / offline resolve & lock**
 ```sh
@@ -63,8 +63,8 @@ $ cargo run -- r which          # 看当前项目会用哪个 R / which R this p
 **对 pak 的诚实 benchmark / honest benchmark vs pak**：见 [`BENCHMARK.md`](BENCHMARK.md)
 （一次性解析：uvr ~5 ms vs pak ~5.2 s；安装这类重活诚实报"打平"）。
 
-全部完成：版本模型 · 元数据(DCF/依赖图) · 联网 · 依赖求解（**pubgrub 回溯**，手写贪心版作对照） · 下载安装 · CLI · benchmark · 多仓库 · 暖缓存 · **R 版本管理** · **lockfile sync**。
-55 个单元测试 + CI（fmt / clippy / build / test）。
+全部完成：版本模型 · 元数据(DCF/依赖图) · 联网 · 依赖求解（**pubgrub 回溯**，手写贪心版作对照） · 下载安装 · CLI · benchmark · 多仓库 · 暖缓存 · **R 版本管理** · **lockfile sync** · **并行下载**。
+59 个单元测试 + CI（fmt / clippy / build / test）。
 
 ## 路线图 / Roadmap
 
@@ -73,7 +73,8 @@ $ cargo run -- r which          # 看当前项目会用哪个 R / which R this p
 - ✅ 元数据 / 下载缓存（暖缓存，v0.5）；端到端 benchmark vs pak（v0.6）。
 - ✅ **R 版本管理**：发现 / `.R-version` 钉版本 / 选择 / 用选中的 R 装包（v0.7，对标 `uv python`）。
 - ✅ **lockfile `sync`**：按 `uvr.lock` 一键还原、不求解防漂移（v0.8，对标 `uv sync` / `renv::restore`）。
-- ⏭ binary 包优先（免编译，本环境受限）· 并行下载安装 · lockfile v2（记录来源仓库）。
+- ✅ **并行下载**：`install` / `sync` 并行预取 tarball，`--jobs <N>` 控制并发（v0.9，作用域线程 + 工作窃取）。
+- ⏭ binary 包优先（免编译，本环境受限）· lockfile v2（记录来源仓库）· 拓扑序安装。
 
 ## 怎么学 / How it's taught
 
