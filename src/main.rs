@@ -1,7 +1,6 @@
-// Step 03：把字符串解析成 Version。
-// 主题：用 Option / Result / match 处理"可能失败"。
+// Step 04：让 Version 能比较大小（按数字逐段比，而非字符串）。
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Version {
     parts: Vec<u64>,
 }
@@ -39,5 +38,12 @@ mod tests {
     #[test]
     fn rejects_non_numeric() {
         assert!(Version::parse("1.2.x").is_none());
+    }
+
+    #[test]
+    fn orders_numerically_not_lexically() {
+        let a = Version::parse("1.2.3").unwrap();
+        let b = Version::parse("1.10.0").unwrap();
+        assert!(a < b, "1.2.3 应当小于 1.10.0");
     }
 }
