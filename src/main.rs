@@ -17,6 +17,7 @@ fn main() -> ExitCode {
     match args.get(1).map(String::as_str) {
         Some("lock") => lock(&args[2..]),
         Some("install") => install(&args[2..]),
+        Some("sync") => sync(&args[2..]),
         Some("r") => r_command(&args[2..]),
         _ => usage(),
     }
@@ -27,10 +28,26 @@ fn usage() -> ExitCode {
     eprintln!("  uvr lock    <PACKAGES-file> <root-package>...");
     eprintln!("  uvr lock    --repo <url> [--repo <url2> ...] <root-package>...");
     eprintln!("  uvr install --repo <url> [--repo <url2> ...] [--lib <dir>] <root-package>...");
+    eprintln!("  uvr sync    --repo <url> [--repo <url2> ...] [--lib <dir>] [<lockfile>]");
     eprintln!(
         "  uvr r list | which | pin [<version>] | install <version>   # 管理 R 版本 / manage R versions"
     );
     ExitCode::FAILURE
+}
+
+/// 解析当前项目该用的 R（pin > 最高），打印并返回其路径；失败则打印错误、返回 None。
+/// `install` 与 `sync` 共用，保证两者"用哪个 R"的行为一致。
+fn resolve_r_bin() -> Option<PathBuf> {
+    match uvr::rversion::resolve_r(Path::new(".")) {
+        Ok(r) => {
+            eprintln!("→ 使用 R / using R {}: {}", r.version, r.path.display());
+            Some(r.path)
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            None
+        }
+    }
 }
 
 /// `uvr r <子命令>`：管理本机 R 版本。
@@ -211,15 +228,8 @@ fn install(rest: &[String]) -> ExitCode {
         }
     };
     // 用按 pin > 最高 解析出的那个 R 来跑 R CMD INSTALL；钉了却没装就明确报错、不偷偷换 R。
-    let r_bin = match uvr::rversion::resolve_r(Path::new(".")) {
-        Ok(r) => {
-            eprintln!("→ 使用 R / using R {}: {}", r.version, r.path.display());
-            r.path
-        }
-        Err(e) => {
-            eprintln!("{e}");
-            return ExitCode::FAILURE;
-        }
+    let Some(r_bin) = resolve_r_bin() else {
+        return ExitCode::FAILURE;
     };
     let download_dir = PathBuf::from(".uvr-cache/tarballs");
     match uvr::commands::install_packages(&sources, &roots, &lib, &download_dir, &r_bin) {
@@ -235,6 +245,51 @@ fn install(rest: &[String]) -> ExitCode {
         }
         Err(e) => {
             eprintln!("安装失败 / install failed: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// `uvr sync --repo <url>... [--lib <dir>] [<lockfile>]`：按 lockfile 还原环境（不求解）。
+/// 省略 lockfile 路径时默认读 `uvr.lock`。
+fn sync(rest: &[String]) -> ExitCode {
+    let (repos, lib, positional) = parse_flags(rest);
+    if repos.is_empty() {
+        eprintln!("sync 需要 --repo <url>（下载来源）/ sync needs --repo <url>");
+        return usage();
+    }
+    let lockpath = positional.first().map(String::as_str).unwrap_or("uvr.lock");
+    let text = match std::fs::read_to_string(lockpath) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("读不了 lockfile / cannot read {lockpath}: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let sources = match fetch_sources(&repos, &meta_cache_dir()) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("抓取失败 / fetch failed: {e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let Some(r_bin) = resolve_r_bin() else {
+        return ExitCode::FAILURE;
+    };
+    let download_dir = PathBuf::from(".uvr-cache/tarballs");
+    match uvr::commands::sync_from_lock(&text, &sources, &lib, &download_dir, &r_bin) {
+        Ok(installed) => {
+            for p in &installed {
+                println!("synced {p}");
+            }
+            eprintln!(
+                "→ 已按 {lockpath} 还原到项目本地库 / restored from {lockpath} into: {}",
+                lib.display()
+            );
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("同步失败 / sync failed: {e}");
             ExitCode::FAILURE
         }
     }
