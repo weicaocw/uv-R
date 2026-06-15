@@ -9,4 +9,5 @@ pub mod install;
 pub mod lockfile;
 pub mod metadata;
 pub mod resolver;
+pub mod rversion;
 pub mod version;
