@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.8.0 — lockfile 驱动的 sync / Lockfile-driven sync
+
+**中文**
+- **`uvr sync`（模块 O）**：按 lockfile **一键还原**环境——读 `uvr.lock`（或指定文件），**不求解**、严格安装锁定的版本（防漂移），下载并装进项目本地库。典型工作流：`uvr lock --repo ... pkg > uvr.lock` 提交进库 → 队友 / CI / 新机器 `uvr sync --repo ...` 还原一模一样的依赖（对标 `renv::restore` / `uv sync` / `npm ci`）。
+- **重构**：抽出 `run_plan`（下载 + `R CMD INSTALL`）供 install/sync 共用；抽出 `resolve_r_bin` 让两者"用哪个 R"行为一致。
+- **质量**：55 个单元测试（+3 `#[ignore]`），fmt + clippy 全绿。本机演示 lock→sync 还原 dotenv 1.0.3.9000。新增教学课 36–37。
+
+**English**
+- **`uvr sync` (Module O)**: restore an environment from a lockfile in one shot — read `uvr.lock` (or a given file), **without resolving**, install the exact locked versions (no drift), into a project-local lib. Workflow: `uvr lock --repo ... pkg > uvr.lock` (commit it) → teammates / CI / a fresh machine run `uvr sync --repo ...` to restore identical deps (analogue of `renv::restore` / `uv sync` / `npm ci`).
+- **Refactor**: extract `run_plan` (download + `R CMD INSTALL`) shared by install/sync; extract `resolve_r_bin` so both pick the same R.
+- **Quality**: 55 unit tests (+3 `#[ignore]`), fmt + clippy clean. Demo restores dotenv 1.0.3.9000 via lock→sync. New lessons 36–37.
+
 ## v0.7.0 — R 版本管理 + 用户手册 / R version management + user manual
 
 **中文**

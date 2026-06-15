@@ -7,7 +7,7 @@
 **Rust 语言、R 包管理、软件设计**。
 
 - 每一小步都遵循 TDD：失败的测试 → 最小实现 → 通过。
-- 每一小步都有一篇**自包含的简体中文教学课**：`docs/lessons/step-NN-*.md`（共 35 课）。
+- 每一小步都有一篇**自包含的简体中文教学课**：`docs/lessons/step-NN-*.md`（共 37 课）。
 - 课程地图与进度见 `docs/CURRICULUM.md`。
 - 提交与 PR 信息**中英双语**，便于事后翻历史复习。
 
@@ -18,7 +18,7 @@ documented as a self-contained Chinese lesson under `docs/lessons/`.
 > 📖 **用户手册（中英对照）/ User manual (bilingual)**：[`docs/MANUAL.md`](docs/MANUAL.md)
 > —— 面向使用的完整参考：命令、R 版本管理、缓存、项目布局、排错。
 
-## 现在能做什么（v0.7）/ What works now (v0.7)
+## 现在能做什么（v0.8）/ What works now (v0.8)
 
 **离线求解 + 锁定 / offline resolve & lock**
 ```sh
@@ -44,6 +44,13 @@ installed dotenv 1.0.3.9000
 → 已安装到项目本地库 / installed into project-local lib: ./r-lib
 ```
 
+**按 lockfile 还原环境（对标 `uv sync` / `renv::restore`）/ restore from a lockfile**
+```sh
+$ cargo run -- lock --repo https://gaborcsardi.r-universe.dev dotenv > uvr.lock
+$ cargo run -- sync --repo https://gaborcsardi.r-universe.dev --lib ./r-lib
+synced dotenv 1.0.3.9000   # 严格按锁定版本，不求解、不漂移 / exact locked version, no drift
+```
+
 **管理 R 版本（对标 `uv python`）/ manage R versions (like `uv python`)**
 ```sh
 $ cargo run -- r list           # 发现本机所有 R（* = 当前选中）/ discover all R's (* = selected)
@@ -56,8 +63,8 @@ $ cargo run -- r which          # 看当前项目会用哪个 R / which R this p
 **对 pak 的诚实 benchmark / honest benchmark vs pak**：见 [`BENCHMARK.md`](BENCHMARK.md)
 （一次性解析：uvr ~5 ms vs pak ~5.2 s；安装这类重活诚实报"打平"）。
 
-全部完成：版本模型 · 元数据(DCF/依赖图) · 联网 · 依赖求解（**pubgrub 回溯**，手写贪心版作对照） · 下载安装 · CLI · benchmark · 多仓库 · 暖缓存 · **R 版本管理**。
-52 个单元测试 + CI（fmt / clippy / build / test）。
+全部完成：版本模型 · 元数据(DCF/依赖图) · 联网 · 依赖求解（**pubgrub 回溯**，手写贪心版作对照） · 下载安装 · CLI · benchmark · 多仓库 · 暖缓存 · **R 版本管理** · **lockfile sync**。
+55 个单元测试 + CI（fmt / clippy / build / test）。
 
 ## 路线图 / Roadmap
 
@@ -65,7 +72,8 @@ $ cargo run -- r which          # 看当前项目会用哪个 R / which R this p
 - ✅ 合并多仓库索引、跨仓库依赖（v0.4）。
 - ✅ 元数据 / 下载缓存（暖缓存，v0.5）；端到端 benchmark vs pak（v0.6）。
 - ✅ **R 版本管理**：发现 / `.R-version` 钉版本 / 选择 / 用选中的 R 装包（v0.7，对标 `uv python`）。
-- ⏭ binary 包优先（免编译，本环境受限）· 并行下载安装 · lockfile 驱动的 `sync`。
+- ✅ **lockfile `sync`**：按 `uvr.lock` 一键还原、不求解防漂移（v0.8，对标 `uv sync` / `renv::restore`）。
+- ⏭ binary 包优先（免编译，本环境受限）· 并行下载安装 · lockfile v2（记录来源仓库）。
 
 ## 怎么学 / How it's taught
 
@@ -80,6 +88,7 @@ cargo test                                          # 跑全部测试 / run all 
 cargo run -- lock    <PACKAGES-file> <pkg>...        # 离线求解 / resolve offline
 cargo run -- lock    --repo <repo-url> <pkg>...      # 联网求解 / resolve live
 cargo run -- install --repo <repo-url> [--lib <dir>] <pkg>...  # 安装到本地库 / install locally
+cargo run -- sync    --repo <repo-url> [--lib <dir>] [<lockfile>]  # 按 lockfile 还原 / restore
 cargo run -- r list | which | pin [<ver>]           # 管理 R 版本 / manage R versions
 bash scripts/bench.sh                               # 对 pak 跑 benchmark / benchmark vs pak
 ```
