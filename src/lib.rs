@@ -2,5 +2,7 @@
 //!
 //! 库 crate：存放可复用的核心逻辑，供二进制（`src/main.rs`）与测试使用。
 
+pub mod lockfile;
 pub mod metadata;
+pub mod resolver;
 pub mod version;
