@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.11.0 — 拓扑序安装 / Topological install order
+
+**中文**
+- **拓扑序安装（模块 Q）**：`install` / `sync` 现在按**依赖顺序**安装（被依赖的在前），而非字母序——保证 `R CMD INSTALL` 时依赖已就绪。用 Kahn 算法，就绪集合取名字最小者**确定可复现**；只看本批集合内的依赖边，自动忽略 base 包；成环兜底、绝不丢包；索引信息不足（自包含 sync）时优雅退化为名字序。
+- **质量**：66 个单元测试（+3 `#[ignore]`），fmt + clippy 全绿。新增教学课 42（拓扑排序）。
+
+**English**
+- **Topological install order (Module Q)**: `install` / `sync` now install in **dependency order** (dependencies first), not alphabetically — so `R CMD INSTALL` always sees its deps ready. Kahn's algorithm, picking the lexicographically smallest ready node for **determinism**; only in-set edges (base packages auto-ignored); cycle-safe (never drops a package); gracefully degrades to name order when the index is unavailable (self-contained sync).
+- **Quality**: 66 unit tests (+3 `#[ignore]`), fmt + clippy clean. New lesson 42 (topological sort).
+
 ## v0.10.0 — 自包含 lockfile v2 / Self-contained lockfile v2
 
 **中文**

@@ -1,6 +1,6 @@
 # uvr 用户手册 / User Manual
 
-> 适用版本 / Applies to: **v0.10**　·　中英文对照 / Bilingual (中文 → English)
+> 适用版本 / Applies to: **v0.11**　·　中英文对照 / Bilingual (中文 → English)
 > 教程式逐步讲解见 `docs/lessons/`；本手册是**面向使用**的参考。
 > For a step-by-step tutorial see `docs/lessons/`; this manual is a **usage-oriented** reference.
 
@@ -192,7 +192,7 @@ uvr r install <version>    # 不自己装：委托 rig 或给出指引 / hands o
 
 重复 `lock` / `install` 命中暖缓存、**免联网**，实测元数据 `lock --repo` 冷 ~640ms → 暖 ~7ms（~94×）。删 `.uvr-cache/` 即清缓存（下次重新抓）。建议把它加入 `.gitignore`。
 
-`install` / `sync` 会**并行**下载所有 tarball（`--jobs <N>`，默认 = CPU 核数）再串行安装；下载彼此独立故可安全并行，`R CMD INSTALL` 仍按序进行。
+`install` / `sync` 会**并行**下载所有 tarball（`--jobs <N>`，默认 = CPU 核数）再安装；下载彼此独立故可安全并行，`R CMD INSTALL` 按**依赖顺序（拓扑序）**串行进行——被依赖的包先装。
 
 **English**　uvr caches reusable artifacts under `.uvr-cache/` in your project:
 - `.uvr-cache/meta/`: fetched `PACKAGES` (metadata) per repo.
@@ -200,7 +200,7 @@ uvr r install <version>    # 不自己装：委托 rig 或给出指引 / hands o
 
 Repeated `lock` / `install` hit the warm cache, **no network needed** — measured `lock --repo` cold ~640ms → warm ~7ms (~94×). Delete `.uvr-cache/` to clear it (re-fetched next time). Add it to `.gitignore`.
 
-`install` / `sync` download all tarballs **in parallel** (`--jobs <N>`, default = CPU count) then install serially; downloads are independent so parallelism is safe, while `R CMD INSTALL` stays ordered.
+`install` / `sync` download all tarballs **in parallel** (`--jobs <N>`, default = CPU count) then install; downloads are independent so parallelism is safe, while `R CMD INSTALL` runs serially in **dependency (topological) order** — dependencies first.
 
 ---
 
